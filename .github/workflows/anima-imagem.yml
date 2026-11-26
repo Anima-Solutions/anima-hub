@@ -1,0 +1,47 @@
+name: Imagem Ânima constrói?
+
+# Fork Ânima — portão de PR: a imagem do app (Dockerfile do fork, com o design
+# system privado) CONSTRÓI? Nada é publicado: a imagem de produção é construída
+# no próprio servidor (`make build`, docs/anima/README.md §4.2). O upstream tem
+# este portão dentro do publish-image.yml, que fica desabilitado no fork.
+#
+# Segredo: o pacote @anima-solutions/design-system é privado (GitHub Packages).
+# O GITHUB_TOKEN lê o pacote porque o pacote dá acesso de Actions a este
+# repositório (Package settings › Manage Actions access) e o job pede
+# `packages: read`. O token entra no build como secret do BuildKit (Dockerfile,
+# estágio deps) e não fica em camada nenhuma.
+
+on:
+  pull_request:
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  imagem:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build (sem publicar)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: false
+          build-args: |
+            APP_VERSION=${{ github.sha }}
+            NODE_HEAP_MB=6144
+          secrets: |
+            npm_token=${{ secrets.GITHUB_TOKEN }}
+          cache-from: type=gha,scope=anima-hub-amd64
+          cache-to: type=gha,mode=max,scope=anima-hub-amd64

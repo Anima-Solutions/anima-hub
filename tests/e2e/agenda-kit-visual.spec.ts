@@ -153,7 +153,7 @@ test.describe("kit visual da Agenda", () => {
     await page.goto(VITRINE);
     await page.evaluate(() => {
       try {
-        window.localStorage.removeItem("deskcomm-theme");
+        window.localStorage.setItem("deskcomm-theme", "light"); // Fork Ânima: o padrão do fork é o escuro
       } catch {
         /* modo privado: o tema já é o default */
       }

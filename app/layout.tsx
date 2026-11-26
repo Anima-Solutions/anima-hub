@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import { semCorPropria, TEMA_FIXO } from "@/lib/anima/tema-fixo";
 import { headers } from "next/headers";
 import { Toaster } from "sonner";
 import { coresDaBarraDoNavegador } from "@/lib/branding/barra-do-navegador";
@@ -51,6 +52,26 @@ const atkinson = localFont({
   variable: "--font-atkinson",
 });
 
+// Fork Ânima: a fonte do produto é a Inter do Design System Ânima, servida do próprio pacote
+// (`@anima-solutions/design-system/fonts`), sem download no build. A Atkinson continua acima
+// porque é uma das opções da tela Aparência.
+const inter = localFont({
+  src: [
+    {
+      path: "../node_modules/@anima-solutions/design-system/dist/fonts/inter-latin-opsz-normal.woff2",
+      weight: "100 900",
+      style: "normal",
+    },
+    {
+      path: "../node_modules/@anima-solutions/design-system/dist/fonts/inter-latin-ext-opsz-normal.woff2",
+      weight: "100 900",
+      style: "normal",
+    },
+  ],
+  display: "swap",
+  variable: "--font-inter",
+});
+
 const plexMono = localFont({
   src: [
     { path: "./fonts/ibm-plex-mono-400-latin-latin-ext.woff2", weight: "400", style: "normal" },
@@ -77,7 +98,10 @@ async function marcaResolvida(): Promise<{
   readonly marca: MarcaResolvida;
 }> {
   const linha = await marcaDaInstalacao();
-  const marca = resolverMarca([camadaDaInstalacao(linha), camadaDoAmbiente(env)], REGUA_DO_PRODUTO);
+  // Fork Ânima (tema fixo): a cor da instalação não pinta a tela.
+  const marca = semCorPropria(
+    resolverMarca([camadaDaInstalacao(linha), camadaDoAmbiente(env)], REGUA_DO_PRODUTO),
+  );
   return { linha, marca };
 }
 
@@ -165,7 +189,8 @@ export const viewport: Viewport = {
 
 // Inline FOUC-prevention. Conteúdo é string literal estática (zero input do usuário),
 // portanto seguro. Lê localStorage + prefers-color-scheme antes do primeiro paint.
-const THEME_INIT_SCRIPT = `(function(){try{var s=localStorage.getItem('deskcomm-theme');var d=window.matchMedia('(prefers-color-scheme: dark)').matches;var r=(s==='dark'||s==='light')?s:((s==='system'||!s)&&d?'dark':'light');document.documentElement.setAttribute('data-theme',r);}catch(e){document.documentElement.setAttribute('data-theme','light');}})();`;
+// Fork Ânima: sem preferência salva, o tema é o ESCURO (tema principal do DS); "system" segue o SO.
+const THEME_INIT_SCRIPT = `(function(){try{var s=localStorage.getItem('deskcomm-theme');var d=window.matchMedia('(prefers-color-scheme: dark)').matches;var r=(s==='dark'||s==='light')?s:(s==='system'?(d?'dark':'light'):'dark');document.documentElement.setAttribute('data-theme',r);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();`;
 
 /**
  * Motivos já registrados neste processo. `EstiloDaMarca` roda em TODA
@@ -336,11 +361,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html
       lang="pt-BR"
-      data-theme="light"
+      data-theme="dark"
       suppressHydrationWarning
       // As famílias da tela Aparência só DECLARAM custom properties aqui
       // (`preload: false`): o arquivo baixa quando uma organização as usa.
-      className={`${atkinson.variable} ${plexMono.variable} ${VARIAVEIS_DAS_FONTES_DA_APARENCIA}`}
+      className={`${inter.variable} ${atkinson.variable} ${plexMono.variable} ${VARIAVEIS_DAS_FONTES_DA_APARENCIA}`}
     >
       <head>
         {/* Primeiro de tudo: a cor da instalação, antes do CSS e do script de tema. */}
@@ -348,7 +373,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         {/* O tema da plataforma (#3790) entre a marca e o CSS personalizado: a
             marca dá a cor de ação, o tema as superfícies, e o CSS do operador
             fala por último. Ver `app/tema-da-plataforma.tsx`. */}
-        <EstiloDoTemaDaPlataforma />
+        {/* Fork Ânima: com o tema fixo, nenhum tema de plataforma pinta a tela. */}
+        {TEMA_FIXO ? null : <EstiloDoTemaDaPlataforma />}
         <EstiloCssPersonalizado />
         {/* Config pública do Supabase + marca resolvida, em runtime (imagem
             genérica self-host). */}

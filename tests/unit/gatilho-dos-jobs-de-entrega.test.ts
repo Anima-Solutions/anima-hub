@@ -260,6 +260,13 @@ const GATILHO_ESPERADO: Record<string, { condicao: string | null; efeito: string
   },
 
   // --- e o que legitimamente tem interruptor -----------------------------------
+  // Fork Ânima: imagem do app com o design system Ânima (docs/anima/PATCHES.md)
+  "anima-imagem.yml::imagem": {
+    condicao: null,
+    efeito:
+      "Este job prova em PR que a imagem Ânima constrói. Desligá-lo deixa um PR quebrar o " +
+      "build do servidor sem aviso, só descoberto no `make build` da VPS.",
+  },
   "acolhida.yml::acolher": {
     condicao:
       "github.repository_owner == 'melgarafael' && " +
