@@ -108,6 +108,8 @@ upstream:
 | `tests/unit/interface-por-vinculo.test.ts` | idem | idem, e `vi` no import |
 | `tests/unit/marca-tema-da-plataforma.test.tsx` | O cartão "Tema da plataforma" sai de `/admin/marca` com o tema fixo | `vi.mock("@/lib/anima/tema-fixo", () => import("@/tests/fixtures/anima/tema-livre"))` |
 | `tests/e2e/aparencia-templates.spec.ts` | A tela Aparência é escondida e redireciona com o tema fixo | `test.skip(TEMA_FIXO, …)` no `describe` e o import de `TEMA_FIXO` |
+| `tests/e2e/agenda-kit-visual.spec.ts` | O `beforeEach` limpava a preferência para cair no padrão, que no upstream é o claro; no fork o padrão é o escuro e o clique em "alternar tema" ia para o claro | `setItem("deskcomm-theme", "light")` no lugar do `removeItem`; os dois temas seguem medidos |
+| `tests/e2e/passagem-com-contexto.spec.ts` | Exigia a fonte Atkinson no botão "Assumir"; o fork usa a Inter | `/Atkinson\|inter/i` no `toMatch` da fonte |
 | `tests/unit/grupos-sem-grupo-e-a-lista-de-hoje.test.tsx` | A fixture HTML traz o desenho dos ícones em peso regular, e o patch do Phosphor muda para bold | `vi.mock("@/lib/ui/icons", …)` que liga `__ANIMA_PHOSPHOR_PESO_UPSTREAM__` e põe `weight: "regular"` como padrão, e `vi` no import |
 
 ### Falhas conhecidas que não são do fork
