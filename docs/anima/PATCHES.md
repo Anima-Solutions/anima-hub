@@ -39,6 +39,9 @@ no sync:
 | `lib/navigation/interface.ts` | `permitidos()` filtra `rotaOcultaPeloTemaFixo(d.href)` (Aparência some do menu, do hub e do ⌘K) | Responsável pelo fork, 2026-11-26 | Recolocar a condição no filtro |
 | `app/app/settings/aparencia/page.tsx` | `if (TEMA_FIXO) redirect("/app/settings/marca")` no início | Responsável pelo fork, 2026-11-26 | Recolocar a linha |
 | `app/app/settings/marca/_form.tsx`, `app/admin/(protected)/marca/_form.tsx`, `app/admin/(protected)/marca/_estado.tsx` | Campos, prévia e linha de origem da cor escondidos quando `TEMA_FIXO` | Responsável pelo fork, 2026-11-26 | `hidden={TEMA_FIXO}` / `TEMA_FIXO ? null : …` nos pontos marcados |
+| `app/globals.css` — `--agenda-pessoa-8` (framboesa) no `:root` e no espelho `[data-theme="light"]` | `#cc77b1` → `#c06ca6`: sobre o cartão do DS (`#f7faff`) a original dava 2,93:1, abaixo dos 3:1 que `tests/e2e/agenda-kit-visual.spec.ts` cobra. Mesma cor, só mais escura (OKLab L −0,035); o par mais próximo da paleta segue em 0,119, então a frase da vitrine continua verdadeira. O escuro fica com o valor do upstream. O gerador do DS não toca nas cores de pessoa | Responsável pelo fork, 2026-11-26 | Trocar o hex nas duas linhas do claro |
+| `.github/workflows/ci.yml` — `timeout-minutes` do `invariants-majors` | 45 → 60. O upstream roda essa perna em runner próprio; no fork ela cai no `ubuntu-latest` e foi cortada três vezes 1 s depois de a suíte terminar verde (2.662 s de teste) | Responsável pelo fork, 2026-11-26 | Recolocar 60 |
+| `tests/unit/preambulo-do-ci-nao-come-o-relogio.test.ts` | `TETOS["ci.yml::invariants-majors"].minutos` 45 → 60, o mesmo número do ci.yml (o teste exige que batam) | idem | Recolocar 60 |
 
 **Valores copiados à mão do DS:** nenhum. Todo valor sai do pacote pelo gerador.
 
@@ -110,6 +113,8 @@ upstream:
 | `tests/e2e/aparencia-templates.spec.ts` | A tela Aparência é escondida e redireciona com o tema fixo | `test.skip(TEMA_FIXO, …)` no `describe` e o import de `TEMA_FIXO` |
 | `tests/e2e/agenda-kit-visual.spec.ts` | O `beforeEach` limpava a preferência para cair no padrão, que no upstream é o claro; no fork o padrão é o escuro e o clique em "alternar tema" ia para o claro | `setItem("deskcomm-theme", "light")` no lugar do `removeItem`; os dois temas seguem medidos |
 | `tests/e2e/passagem-com-contexto.spec.ts` | Exigia a fonte Atkinson no botão "Assumir"; o fork usa a Inter | `/Atkinson\|inter/i` no `toMatch` da fonte |
+| `tests/e2e/conversa-do-caso.spec.ts` | Exigia a fonte Atkinson no botão; o fork usa a Inter | `/Atkinson\|inter/i` no `toMatch` da fonte |
+| `tests/e2e/aviso-de-caso-no-whatsapp.spec.ts` | idem, no botão "Salvar" | idem |
 | `tests/unit/grupos-sem-grupo-e-a-lista-de-hoje.test.tsx` | A fixture HTML traz o desenho dos ícones em peso regular, e o patch do Phosphor muda para bold | `vi.mock("@/lib/ui/icons", …)` que liga `__ANIMA_PHOSPHOR_PESO_UPSTREAM__` e põe `weight: "regular"` como padrão, e `vi` no import |
 
 ### Falhas conhecidas que não são do fork

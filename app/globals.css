@@ -243,7 +243,7 @@
   --agenda-pessoa-5: #0b7a9a; /* azul */
   --agenda-pessoa-6: #608bda; /* índigo */
   --agenda-pessoa-7: #7b5bad; /* violeta */
-  --agenda-pessoa-8: #cc77b1; /* framboesa */
+  --agenda-pessoa-8: #c06ca6; /* framboesa — Fork Ânima: #cc77b1 dava 2,93:1 no cartão do DS */
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -367,7 +367,7 @@
   --agenda-pessoa-5: #0b7a9a; /* azul */
   --agenda-pessoa-6: #608bda; /* índigo */
   --agenda-pessoa-7: #7b5bad; /* violeta */
-  --agenda-pessoa-8: #cc77b1; /* framboesa */
+  --agenda-pessoa-8: #c06ca6; /* framboesa — Fork Ânima: #cc77b1 dava 2,93:1 no cartão do DS */
 }
 
 [data-theme="dark"] {

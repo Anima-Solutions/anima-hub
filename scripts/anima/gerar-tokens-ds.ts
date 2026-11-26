@@ -33,7 +33,9 @@
  *  - texto de status: o papel, escurecido/clareado só o necessário para 4,5:1 sobre o fundo atenuado.
  *
  * Ficam com o valor do upstream: cores de canal, cores de pessoa da agenda, overlay, movimento,
- * espaçamento, z-index e densidade.
+ * espaçamento, z-index e densidade. Este gerador não as toca. Exceção feita à mão no globals.css:
+ * a framboesa (`--agenda-pessoa-8`) do tema claro, escurecida para 3:1 sobre o cartão do DS
+ * (docs/anima/PATCHES.md).
  */
 
 import fs from "node:fs";
