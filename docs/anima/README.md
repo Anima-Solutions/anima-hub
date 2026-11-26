@@ -167,7 +167,8 @@ O `make server-install` chama `hostgator-setup-kit/install-single-server.sh` com
 com checagem SHA-256) em `.runtime/supabase/` e liga o CRM e o Supabase por uma rede privada
 (`deskcomm_supabase`).
 
-Onde ficam os dados do Supabase (**diverge do AGENTS.anima.md §8**, decisão de 2026-11-26):
+Onde ficam os dados do Supabase (**diverge do AGENTS.anima.md §8**; divergência aceita pelo responsável
+pelo fork em 2026-11-26):
 
 | Dado | Pasta |
 |---|---|
