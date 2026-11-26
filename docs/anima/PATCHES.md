@@ -33,6 +33,8 @@ no sync:
 | `lib/anima/tema-fixo.ts` (novo) | Tema fixo: organizações e instalação não trocam cor nem aparência (ver seção abaixo) | Responsável pelo fork, 2026-11-26 | — (arquivo só do fork) |
 | `app/app/layout.tsx` | `semCorPropria(...)` na marca, `aparenciaFixa(...)` na aparência e `temaDeExtensaoFixo(...)` no tema de extensão | Responsável pelo fork, 2026-11-26 | Reenvolver as três chamadas; `grep -n tema-fixo` mostra onde |
 | `app/layout.tsx` (além da fonte e do tema) | `marcaResolvida()` envolve `resolverMarca(...)` em `semCorPropria(...)` | Responsável pelo fork, 2026-11-26 | Idem |
+| `app/layout.tsx` (tema da plataforma) | `<EstiloDoTemaDaPlataforma />` só sai sem `TEMA_FIXO`: um tema de plataforma já escolhido não pinta a tela | Responsável pelo fork, 2026-11-26 | `{TEMA_FIXO ? null : <EstiloDoTemaDaPlataforma />}` |
+| `app/admin/(protected)/marca/page.tsx` | Cartão "Tema da plataforma" (seletor) fora da tela quando `TEMA_FIXO` | Responsável pelo fork, 2026-11-26 | `{TEMA_FIXO ? null : (<TemaDaPlataforma … />)}` |
 | `lib/branding/saida.ts` | `marcaDaSaida()` envolve a marca em `semCorPropria(...)` (e-mail, ícone, MFA) | Responsável pelo fork, 2026-11-26 | Idem |
 | `lib/navigation/interface.ts` | `permitidos()` filtra `rotaOcultaPeloTemaFixo(d.href)` (Aparência some do menu, do hub e do ⌘K) | Responsável pelo fork, 2026-11-26 | Recolocar a condição no filtro |
 | `app/app/settings/aparencia/page.tsx` | `if (TEMA_FIXO) redirect("/app/settings/marca")` no início | Responsável pelo fork, 2026-11-26 | Recolocar a linha |
@@ -104,6 +106,7 @@ upstream:
 | `tests/unit/branding-saida.test.ts` | O e-mail ignora a cor de marca com o tema fixo | `vi.mock("@/lib/anima/tema-fixo", () => import("@/tests/fixtures/anima/tema-livre"))` |
 | `tests/unit/interface-por-empresa.test.ts` | Aparência sai do menu com o tema fixo | idem, e `vi` no import |
 | `tests/unit/interface-por-vinculo.test.ts` | idem | idem, e `vi` no import |
+| `tests/unit/marca-tema-da-plataforma.test.tsx` | O cartão "Tema da plataforma" sai de `/admin/marca` com o tema fixo | `vi.mock("@/lib/anima/tema-fixo", () => import("@/tests/fixtures/anima/tema-livre"))` |
 | `tests/e2e/aparencia-templates.spec.ts` | A tela Aparência é escondida e redireciona com o tema fixo | `test.skip(TEMA_FIXO, …)` no `describe` e o import de `TEMA_FIXO` |
 | `tests/unit/grupos-sem-grupo-e-a-lista-de-hoje.test.tsx` | A fixture HTML traz o desenho dos ícones em peso regular, e o patch do Phosphor muda para bold | `vi.mock("@/lib/ui/icons", …)` que liga `__ANIMA_PHOSPHOR_PESO_UPSTREAM__` e põe `weight: "regular"` como padrão, e `vi` no import |
 

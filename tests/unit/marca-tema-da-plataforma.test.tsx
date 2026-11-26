@@ -16,6 +16,7 @@ vi.mock("next/navigation", () => ({
     throw new Error("notFound");
   },
 }));
+vi.mock("@/lib/anima/tema-fixo", () => import("@/tests/fixtures/anima/tema-livre")); // Fork Ânima: o upstream com cor de marca
 vi.mock("@/lib/auth/server", () => ({ loadAuthUser: mocks.loadAuthUser }));
 vi.mock("@/lib/branding/instalacao", () => ({
   marcaDaInstalacao: mocks.marcaDaInstalacao,

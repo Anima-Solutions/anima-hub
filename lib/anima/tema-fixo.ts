@@ -6,7 +6,8 @@
  *  - a cor da marca da organização (Configurações › Marca) e a da instalação (`/admin/marca` e
  *    `APP_ACCENT_HEX`) — ignoradas na tela, nos e-mails e no ícone;
  *  - a tela Aparência (templates, cor secundária, fonte, ajustes): fora do menu, rota redireciona;
- *  - o tema de extensão por organização.
+ *  - o tema de extensão por organização e o tema da plataforma (seletor em `/admin/marca` e o
+ *    `<style>` no layout raiz).
  * Nome e logo continuam livres.
  *
  * O bloqueio é aplicado nos pontos de CONSUMO (layouts e saídas), e não no resolvedor
