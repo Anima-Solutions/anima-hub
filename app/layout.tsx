@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { semCorPropria } from "@/lib/anima/tema-fixo";
+import { semCorPropria, TEMA_FIXO } from "@/lib/anima/tema-fixo";
 import { headers } from "next/headers";
 import { Toaster } from "sonner";
 import { coresDaBarraDoNavegador } from "@/lib/branding/barra-do-navegador";
@@ -373,7 +373,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         {/* O tema da plataforma (#3790) entre a marca e o CSS personalizado: a
             marca dá a cor de ação, o tema as superfícies, e o CSS do operador
             fala por último. Ver `app/tema-da-plataforma.tsx`. */}
-        <EstiloDoTemaDaPlataforma />
+        {/* Fork Ânima: com o tema fixo, nenhum tema de plataforma pinta a tela. */}
+        {TEMA_FIXO ? null : <EstiloDoTemaDaPlataforma />}
         <EstiloCssPersonalizado />
         {/* Config pública do Supabase + marca resolvida, em runtime (imagem
             genérica self-host). */}

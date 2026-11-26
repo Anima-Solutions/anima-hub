@@ -290,7 +290,8 @@ A marca mora **no banco**, não na imagem. O `.env` é só a semente:
 - **Tema fixo** (`lib/anima/tema-fixo.ts`, `TEMA_FIXO = true`): nenhuma organização nem a
   instalação troca a cor ou a aparência. A cor gravada no banco ou em `APP_ACCENT_HEX` é ignorada
   na tela, nos e-mails e no ícone. A tela **Aparência** sai do menu e redireciona para Marca, e o
-  tema de extensão por organização não se aplica. Nome e logo continuam livres. Nada do banco é
+  tema de extensão por organização não se aplica. Em `/admin/marca`, o seletor "Tema da plataforma"
+  também sai, e um tema de plataforma escolhido antes deixa de ser aplicado. Nome e logo continuam livres. Nada do banco é
   apagado; com `TEMA_FIXO = false` volta o comportamento do upstream.
 
 ## 9. Solução de problemas

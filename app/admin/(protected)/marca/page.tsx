@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { CssPersonalizado } from "./_css-personalizado";
 import { TemaDaPlataforma } from "./_tema-da-plataforma";
+import { TEMA_FIXO } from "@/lib/anima/tema-fixo";
 import { loadAuthUser } from "@/lib/auth/server";
 import {
   cssPersonalizadoDaInstalacao,
@@ -134,17 +135,20 @@ export default async function Page() {
         fallbackEm={instanteLegivel(linha?.fallback_at ?? null, tagDeIdioma(idioma))}
         fallbackMotivo={linha?.fallback_reason ?? null}
       />
-      <TemaDaPlataforma
-        // Só o que o seletor mostra: a LEITURA da plataforma reconfere o id no
-        // banco a cada render, então a tela não precisa entregar o tema inteiro.
-        temas={temasInstalados.map((tema) => ({
-          instalacaoId: tema.instalacaoId,
-          rotulo: tema.rotulo,
-          versao: tema.versao,
-          paleta: tema.tema.palette,
-        }))}
-        escolhido={temaEscolhido}
-      />
+      {/* Fork Ânima: o tema é fixo, então o seletor de tema da plataforma sai da tela. */}
+      {TEMA_FIXO ? null : (
+        <TemaDaPlataforma
+          // Só o que o seletor mostra: a LEITURA da plataforma reconfere o id no
+          // banco a cada render, então a tela não precisa entregar o tema inteiro.
+          temas={temasInstalados.map((tema) => ({
+            instalacaoId: tema.instalacaoId,
+            rotulo: tema.rotulo,
+            versao: tema.versao,
+            paleta: tema.tema.palette,
+          }))}
+          escolhido={temaEscolhido}
+        />
+      )}
       <CssPersonalizado
         gravado={cssPersonalizado}
         gravadoEscuro={cssPersonalizadoEscuro}
