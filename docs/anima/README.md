@@ -277,9 +277,9 @@ A marca mora **no banco**, não na imagem. O `.env` é só a semente:
   | Campo em `/admin/marca` | Arquivo |
   |---|---|
   | Nome do sistema | `Ânima Hub` |
-  | Logo | `Hub - Logotipo Preto@240.png` (Logo Soluções) |
-  | Logo para o tema escuro | `Hub - Logotipo Branco@240.png` (Logo Soluções) |
-  | Ícone do aplicativo e do navegador | `Simbolo Preto@512.png` (Logo; o Hub não tem símbolo próprio) |
+  | Logo | `[Ânima] Logo Soluções/PNG/Hub - Logotipo Preto@240.png` |
+  | Logo para o tema escuro | `[Ânima] Logo Soluções/PNG/Hub - Logotipo Branco@240.png` |
+  | Ícone do aplicativo e do navegador | `[Ânima] Logo/PNG/Simbolo Preto@512.png` (o Hub não tem símbolo próprio) |
 - **Organização:** Configurações › Marca (`/app/settings/marca`). Grava em
   `organizations.settings.branding`.
 - **Semente no `.env`:** `APP_NAME`, `APP_LOGO_URL` e `APP_ACCENT_HEX`. Valem só até alguém salvar
