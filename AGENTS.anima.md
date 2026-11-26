@@ -113,8 +113,8 @@ Cada arquivo do upstream alterado é um conflito em potencial a cada sync. Toque
 - `package.json` / `pnpm-lock.yaml` — dependência `@anima-solutions/design-system`.
 - `.npmrc` — registro do escopo privado, com token **via variável de ambiente** (`${NPM_TOKEN}`).
   Nunca commite token.
-- `Dockerfile` e o workflow de imagem própria — build com o pacote privado (secret mount) e
-  publicação da imagem Ânima.
+- `Dockerfile` e o workflow de imagem própria — build com o pacote privado (secret mount). A
+  imagem de produção é construída no servidor (`make build`); o CI só prova em PR que ela constrói.
 - `docs/anima/**`, `AGENTS.anima.md` e o banner de uma linha no topo do `README.md`.
 - **Arquivos novos da Ânima** (não existem no upstream, então não geram conflito): `Makefile`,
   `docker-compose.anima.yml` e `.env.anima.example` (seções 8 e 9).
@@ -250,11 +250,10 @@ Alvos mínimos:
 | `dev` | Sobe o ambiente local de desenvolvimento |
 | `check` | Gates: `pnpm typecheck`, `pnpm lint`, `pnpm test:unit` |
 | `e2e` | `pnpm test:e2e` |
-| `build` | Gera a imagem Docker Ânima (com o pacote privado via secret) com a tag `TAG` |
-| `push` | Publica a imagem no registro |
+| `build` | Gera no servidor a imagem Docker Ânima (com o pacote privado via secret) com a tag `TAG`; não há registro (decisão de 2026-11-26) |
 | `up` / `down` / `restart` | Sobe, para e reinicia o stack com os três compose files |
 | `ps` / `logs` | Estado dos containers e logs (`SERVICE=` opcional) |
-| `deploy` | Backup → pull da imagem `TAG` → `up -d` → healthcheck → rollback se falhar |
+| `deploy` | Backup → `build` da `TAG` → pull de worker/scheduler → `up -d` → healthcheck → rollback se falhar |
 | `update` | Mesmo fluxo do `deploy` para uma nova versão do fork, registrando a versão anterior |
 | `rollback` | Volta para a imagem anterior registrada |
 | `backup` / `restore` | Backup e restauração em `/srv/backups/deskcomm/` |

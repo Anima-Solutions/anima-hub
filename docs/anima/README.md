@@ -26,7 +26,8 @@ da Ânima. O fork vive em `Anima-Solutions/anima-hub` e recebe o upstream por ta
 
 **Estado em 2026-11-26:** só existe a documentação. Nenhum token foi trocado ainda.
 
-**Decisões tomadas (2026-11-26):** imagem `ghcr.io/anima-solutions/anima-hub`; worker e scheduler
+**Decisões tomadas (2026-11-26):** imagem do app **construída no próprio servidor** (`make build`), sem
+registro; worker e scheduler
 com as imagens oficiais do upstream; Supabase self-hosted no mesmo servidor; tema escuro como
 padrão (com patch aprovado em `lib/theme.tsx`).
 
@@ -80,8 +81,8 @@ O `.npmrc` do projeto (🚧, entra junto com a dependência do DS) terá somente
 
 O ponto de partida é o kit do upstream (`hostgator-setup-kit/`), com três diferenças:
 
-1. **Imagem do app:** `ghcr.io/anima-solutions/anima-hub:<versão>` em vez de
-   `ghcr.io/melgarafael/deskcommcrm` (decidido em 2026-11-26).
+1. **Imagem do app construída no servidor** (`make build`), a partir do fork, em vez de puxar
+   `ghcr.io/melgarafael/deskcommcrm` (decidido em 2026-11-26). Ver a seção 4.2.
 2. **Worker e scheduler usam as imagens oficiais** do upstream (`ghcr.io/melgarafael/deskcomm-worker`
    e `deskcomm-scheduler`), na mesma tag de versão do upstream em que o fork se baseia. O Nível 1
    não altera nada que eles executam (decidido em 2026-11-26).
@@ -104,7 +105,7 @@ PROXY_NETWORK_NAME=anima_proxymanager_shared_network
 PROXY_NETWORK_APP_IP=<IP fixo que o Proxy Host do NPM aponta>
 ```
 
-Fluxo previsto (🚧): `make setup` → editar `.env` → `make deploy TAG=<versão>` → criar o Proxy Host
+Fluxo previsto (🚧): `make setup` → editar `.env` → `make deploy TAG=<versão>` (constrói e sobe) → criar o Proxy Host
 no NPM apontando para `PROXY_NETWORK_APP_IP:3000` → `make health`.
 
 **Verificação depois de qualquer deploy:** `/` responde `200` e `/app` responde `307` (redireciona
@@ -148,34 +149,36 @@ deploy e registrado aqui.
 
 ### 4.2 Como a imagem Ânima é gerada
 
-A imagem do app é publicada pelo workflow `.github/workflows/anima-imagem.yml` (só do fork):
-
-| Evento | O que acontece |
-|---|---|
-| Tag `anima-v<X.Y.Z>-<n>` (ex.: `anima-v1.40.0-1`) | Publica `ghcr.io/anima-solutions/anima-hub:<X.Y.Z>-<n>` e move `stable` |
-| `workflow_dispatch` | Publica `sha-<7>` do commit, para teste |
-| Pull request | Só constrói (portão "a imagem constrói?") |
-
-`<X.Y.Z>` é a versão do upstream em que o fork se baseia, e é a tag das imagens oficiais de worker
-e scheduler que acompanham a instalação. `<n>` conta as publicações Ânima sobre a mesma base.
-O prefixo `anima-` deixa a tag fora dos workflows do upstream, que reagem a `v*`. Só linux/amd64.
-
-**Acesso ao pacote do DS no CI.** O `Dockerfile` instala o DS com o token passado como secret do
-BuildKit (`--mount=type=secret,id=npm_token`), que não fica gravado em nenhuma camada. No CI, o
-token é o `GITHUB_TOKEN` do workflow. Para ele funcionar, libere o repositório uma vez: no GitHub,
-pacote `@anima-solutions/design-system` › *Package settings* › *Manage Actions access* › adicionar
-`anima-hub` com papel *Read*. Uma alternativa é o secret `NPM_TOKEN` no repositório (PAT com
-`read:packages`), que tem precedência no `anima-imagem.yml`. O CI do upstream (`ci.yml` e `e2e.yml`,
-pela action `preparar-node`) usa só o `GITHUB_TOKEN`.
-
-Build local (o que o `make build`, 🚧, vai encapsular):
+A imagem do app é **construída no próprio servidor**, a partir do código do fork, e não é publicada
+em registro nenhum (decidido em 2026-11-26). O CI só prova, em todo PR, que ela constrói
+(`.github/workflows/anima-imagem.yml`, sem publicar).
 
 ```bash
-docker build --secret id=npm_token,env=NPM_TOKEN -t ghcr.io/anima-solutions/anima-hub:<tag> .
+# o que o `make build` (🚧) vai encapsular, no checkout do fork em /srv/stacks/deskcomm
+git fetch origin && git checkout <tag ou commit aprovado>
+docker build --secret id=npm_token,env=NPM_TOKEN \
+  --build-arg APP_VERSION=<versão> --build-arg NODE_HEAP_MB=6144 \
+  -t anima-hub:<versão> .
 ```
 
+- **Token no servidor:** `NPM_TOKEN` (PAT do GitHub só com `read:packages`) no `.env` do servidor.
+  Entra no build como secret do BuildKit e não fica gravado em nenhuma camada.
+- **Memória:** o `next build` precisa de ~6 GB de heap (com 4 GB, medido, falta memória). Reserve
+  ~8 GB livres na hora do build, ou o build cai ou aperta o app em produção.
+- **Tempo:** ~10 min de CPU cheia por versão. Faça o build antes de parar o app: o `up -d` só troca
+  o contêiner depois da imagem pronta.
+- **Rollback:** a imagem só existe naquele disco. O `make build` mantém as anteriores com a tag
+  da versão (`anima-hub:<versão>`); `make rollback` volta para a registrada antes do update.
+- **Worker e scheduler** continuam sendo puxados do upstream (`ghcr.io/melgarafael/…`), na versão
+  em que o fork se baseia.
+
+**Acesso ao pacote do DS no CI.** Os testes do PR (`ci.yml`, `e2e.yml`) e o `anima-imagem.yml`
+instalam o DS com o `GITHUB_TOKEN` do workflow, sem PAT. Para funcionar, uma vez: pacote
+`@anima-solutions/design-system` › *Package settings* › *Manage Actions access* › adicionar
+`anima-hub` com papel *Read*. Os workflows pedem `packages: read` (ver `PATCHES.md`).
+
 **Workflows do upstream desabilitados no fork** (GitHub › Actions › *Disable workflow*, sem mudar
-arquivo): `publish-image.yml` (publicaria as imagens do upstream com o nome da organização Ânima),
+arquivo): `publish-image.yml` (publica imagens do upstream; o fork não usa registro),
 `release.yml` (corte de versão do upstream), `acolhida.yml`, `relogio.yml` e
 `vigia-de-colisao.yml` (automação de PR do repositório upstream). Depois de cada sync, confira se
 continuam desabilitados.
@@ -191,10 +194,10 @@ Fluxo Ânima (🚧 `make update TAG=<versão>`):
 
 1. Backup do banco, dos volumes e do `.env` em `/srv/backups/deskcomm/`.
 2. Registrar a imagem em uso (para o rollback).
-3. Gravar no `.env` a imagem Ânima nova (`APP_IMAGE`) e as oficiais do worker e do scheduler na
-   mesma versão.
+3. Construir a imagem Ânima da versão nova (`make build`) e gravar no `.env` o `APP_IMAGE` dela e
+   as oficiais do worker e do scheduler na mesma versão do upstream.
 4. Aplicar as migrations da versão nova (ver ⚠️ abaixo).
-5. `pull` e `up -d` com os três compose files.
+5. `pull` (worker e scheduler) e `up -d` com os três compose files.
 6. Healthcheck (`/` = 200, `/app` = 307). Se falhar, rollback automático para a imagem registrada.
 
 Rollback manual: `make rollback` (🚧). Ele pede confirmação, a menos que `YES=1`.
@@ -296,7 +299,8 @@ A marca mora **no banco**, não na imagem. O `.env` é só a semente:
 |---|---|---|
 | `401 Unauthorized` no `pnpm install` (npm.pkg.github.com) | `NPM_TOKEN` ausente, ou é o token do MCP | Exportar um token do GitHub com `read:packages` |
 | `404` para `@anima-solutions/design-system` | O escopo não está apontando para o GitHub Packages | Conferir o `.npmrc` (seção 3) |
-| Build da imagem falha com `401` ao instalar o DS | Secret do token não passado ao build, ou o pacote não libera o repositório | Local: `--secret id=npm_token,env=NPM_TOKEN`. CI: liberar o acesso de Actions no pacote (seção 4.2) |
+| `next build` morre com `heap out of memory` | Heap de 4 GB (padrão do `Dockerfile`) | `--build-arg NODE_HEAP_MB=6144` e ~8 GB livres (seção 4.2) |
+| Build da imagem falha com `401` ao instalar o DS | Secret do token não passado ao build, ou o pacote não libera o repositório | Servidor: `NPM_TOKEN` no `.env` e `--secret id=npm_token,env=NPM_TOKEN`. CI: liberar o acesso de Actions no pacote (seção 4.2) |
 | Tela ilegível depois de um CSS personalizado | CSS do administrador sobrescrevendo tokens | Abrir a página com `?sem_css=1` para desligá-lo e corrigir em `/admin/marca` |
 | `network anima_proxymanager_shared_network declared as external, but could not be found` | O stack do NPM não criou a rede, ou ela tem outro nome | `docker network ls`; ajustar `PROXY_NETWORK_NAME` |
 | Domínio responde `502` depois de um deploy | `PROXY_NETWORK_APP_IP` diferente do IP do Proxy Host | Alinhar o `.env` com o Proxy Host do NPM |
@@ -347,11 +351,10 @@ confirmação, a menos que `YES=1`.
 | `make dev` | Ambiente local de desenvolvimento |
 | `make check` | `pnpm typecheck`, `pnpm lint`, `pnpm test:unit` |
 | `make e2e` | `pnpm test:e2e` |
-| `make build TAG=…` | Imagem Docker Ânima (DS via secret) |
-| `make push TAG=…` | Publica a imagem |
+| `make build TAG=…` | Constrói a imagem Ânima no servidor (DS via secret) |
 | `make up` / `down` / `restart` | Stack com os três compose files |
 | `make ps` / `logs [SERVICE=…]` | Estado e logs |
-| `make deploy TAG=…` | Backup → pull → `up -d` → healthcheck → rollback se falhar |
+| `make deploy TAG=…` | Backup → build → pull (worker/scheduler) → `up -d` → healthcheck → rollback se falhar |
 | `make update TAG=…` | Igual ao deploy, registrando a versão anterior |
 | `make rollback` | Volta para a imagem anterior registrada |
 | `make backup` / `restore` | Em `/srv/backups/deskcomm/` |
