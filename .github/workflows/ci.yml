@@ -25,6 +25,8 @@ on:
 # continua por job em publish-image.yml — mesma regra, menor escopo que precisa.
 permissions:
   contents: read
+  # Fork Ânima: o pnpm install baixa o design system privado do GitHub Packages.
+  packages: read
 
 # ── Uma rodada por PR: o push novo cancela a antiga — POR JOB, nunca por workflow
 #

@@ -55,6 +55,8 @@ on:
 # `secrets.GITHUB_TOKEN`, ausente aqui.
 permissions:
   contents: read
+  # Fork Ânima: o pnpm install baixa o design system privado do GitHub Packages.
+  packages: read
 
 # Cancelamento da rodada superada: por JOB (os pesados), nunca no workflow nem
 # no agregador — razão medida e a tabela por evento no cabeçalho do ci.yml.

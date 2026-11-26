@@ -264,8 +264,8 @@ const GATILHO_ESPERADO: Record<string, { condicao: string | null; efeito: string
   "anima-imagem.yml::imagem": {
     condicao: null,
     efeito:
-      "Este job publica a imagem Ânima (ghcr.io/anima-solutions/anima-hub). Desligá-lo deixa " +
-      "a instalação Ânima sem a versão nova, sem erro em lugar nenhum.",
+      "Este job prova em PR que a imagem Ânima constrói. Desligá-lo deixa um PR quebrar o " +
+      "build do servidor sem aviso, só descoberto no `make build` da VPS.",
   },
   "acolhida.yml::acolher": {
     condicao:
