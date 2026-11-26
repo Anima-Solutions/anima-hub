@@ -1,0 +1,52 @@
+# Fork Ânima — override do docker-compose.prod.yml para os servidores Ânima
+# (AGENTS.anima.md §8). Não edite o compose do upstream: tudo o que muda entra
+# aqui, por ÚLTIMO na lista de -f (o Makefile monta a lista).
+#
+#   1. Nomes de contêiner fixos: `${COMPOSE_PROJECT_NAME}-<serviço>`.
+#   2. Volumes em pastas de /srv. Eles são EXTERNOS: quem os cria é o
+#      `make setup` (volume local com bind para a pasta certa), com o mesmo nome
+#      que o compose daria (`<projeto>_<volume>`). Assim os scripts do kit, que
+#      rodam o compose sem este arquivo, enxergam os MESMOS dados.
+#   3. Redis não tem volume no upstream (fila efêmera de propósito) e continua
+#      sem.
+
+services:
+  app:
+    container_name: ${COMPOSE_PROJECT_NAME:-deskcomm}-app
+  worker:
+    container_name: ${COMPOSE_PROJECT_NAME:-deskcomm}-worker
+  scheduler:
+    container_name: ${COMPOSE_PROJECT_NAME:-deskcomm}-scheduler
+  waha:
+    container_name: ${COMPOSE_PROJECT_NAME:-deskcomm}-waha
+  redis:
+    container_name: ${COMPOSE_PROJECT_NAME:-deskcomm}-redis
+  srh:
+    container_name: ${COMPOSE_PROJECT_NAME:-deskcomm}-srh
+  wacalls:
+    container_name: ${COMPOSE_PROJECT_NAME:-deskcomm}-wacalls
+  asterisk:
+    container_name: ${COMPOSE_PROJECT_NAME:-deskcomm}-asterisk
+  voice-agent:
+    container_name: ${COMPOSE_PROJECT_NAME:-deskcomm}-voice-agent
+
+volumes:
+  # /srv/appdata/deskcomm/waha/sessions — pareamento do WhatsApp
+  waha-data:
+    external: true
+    name: ${COMPOSE_PROJECT_NAME:-deskcomm}_waha-data
+  # /srv/storage/deskcomm/waha-media — mídias recebidas
+  waha-media:
+    external: true
+    name: ${COMPOSE_PROJECT_NAME:-deskcomm}_waha-media
+  # /srv/appdata/deskcomm/wacalls
+  wacalls-data:
+    external: true
+    name: ${COMPOSE_PROJECT_NAME:-deskcomm}_wacalls-data
+  # /srv/appdata/deskcomm/asterisk/{data,logs}
+  asterisk-data:
+    external: true
+    name: ${COMPOSE_PROJECT_NAME:-deskcomm}_asterisk-data
+  asterisk-logs:
+    external: true
+    name: ${COMPOSE_PROJECT_NAME:-deskcomm}_asterisk-logs
