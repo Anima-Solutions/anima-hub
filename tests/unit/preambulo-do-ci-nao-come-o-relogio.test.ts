@@ -72,7 +72,7 @@ const TETOS: Record<string, { minutos: number; razao: string }> = {
   // lê o desfecho de `needs`. O teto que denuncia a suíte crescendo vive na perna
   // que a roda.
   "ci.yml::invariants-majors": {
-    minutos: 45,
+    minutos: 60, // Fork Ânima: sem runner próprio (docs/anima/PATCHES.md)
     razao:
       "a perna deixou de ser UMA passada: agora é `test:db` + `test:db:update`, e cada uma sobe " +
       "Postgres e aplica o baseline (p90 medido de uma passada: 325s). O 30 era DECLARADO, não " +
