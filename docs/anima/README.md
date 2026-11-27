@@ -219,6 +219,11 @@ instalam o DS com o `GITHUB_TOKEN` do workflow, sem PAT. Para funcionar, uma vez
 `@anima-solutions/design-system` › *Package settings* › *Manage Actions access* › adicionar
 `anima-hub` com papel *Read*. Os workflows pedem `packages: read` (ver `PATCHES.md`).
 
+**PR só de operação ou de seeds é curto.** `Makefile`, `docker-compose.anima.yml`,
+`.env.anima.example`, `.anima-upstream` e `scripts/anima/**` não mudam o produto: um PR que só
+mexe neles pula o e2e e o build da imagem (os jobs terminam verdes, com o motivo no log) e roda
+só o `verify`, ~12 min. Basta um arquivo do produto no PR para tudo voltar a rodar.
+
 **Workflows do upstream desabilitados no fork** (GitHub › Actions › *Disable workflow*, sem mudar
 arquivo): `publish-image.yml` (publica imagens do upstream; o fork não usa registro),
 `release.yml` (corte de versão do upstream), `acolhida.yml`, `relogio.yml` e

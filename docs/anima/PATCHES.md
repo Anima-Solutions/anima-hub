@@ -16,7 +16,7 @@ no sync:
 | `app/layout.tsx` | Fonte Inter do pacote do DS (`--font-inter`) no `<html>`; tema escuro sem preferência salva (`THEME_INIT_SCRIPT` e `data-theme="dark"` no `<html>`) | 2026-11-26 | Reaplicar o bloco `const inter = localFont(...)`, a classe no `<html>` e o script |
 | `package.json` / `pnpm-lock.yaml` | Dependência `@anima-solutions/design-system`; patch do Phosphor em `pnpm.patchedDependencies` | 2026-11-26 | `pnpm add @anima-solutions/design-system@<versão>`; recolocar a entrada do patch |
 | `Dockerfile` | Estágio `deps`: `COPY .npmrc` e `RUN --mount=type=secret,id=npm_token,env=NPM_TOKEN pnpm install` (token do DS sem ficar em camada) | 2026-11-26 | Reaplicar as duas linhas no estágio `deps` |
-| `.github/workflows/anima-imagem.yml` (novo) | Portão de PR: prova que a imagem Ânima constrói, sem publicar (a imagem de produção é construída no servidor) | 2026-11-26 | — (arquivo só do fork) |
+| `.github/workflows/anima-imagem.yml` (novo) | Portão de PR: prova que a imagem Ânima constrói, sem publicar; pula o build quando `scripts/pr-mexe-na-imagem.sh` diz que o PR não alcança a imagem (a imagem de produção é construída no servidor) | 2026-11-26 | — (arquivo só do fork) |
 | `.npmrc` (novo) | Escopo `@anima-solutions` → GitHub Packages, token via `${NPM_TOKEN}` | 2026-11-26 | — (arquivo só do fork) |
 
 **Fora da superfície permitida** (aprovados):
@@ -42,6 +42,8 @@ no sync:
 | `app/globals.css` — `--agenda-pessoa-8` (framboesa) no `:root` e no espelho `[data-theme="light"]` | `#cc77b1` → `#c06ca6`: sobre o cartão do DS (`#f7faff`) a original dava 2,93:1, abaixo dos 3:1 que `tests/e2e/agenda-kit-visual.spec.ts` cobra. Mesma cor, só mais escura (OKLab L −0,035); o par mais próximo da paleta segue em 0,119, então a frase da vitrine continua verdadeira. O escuro fica com o valor do upstream. O gerador do DS não toca nas cores de pessoa | Responsável pelo fork, 2026-11-26 | Trocar o hex nas duas linhas do claro |
 | `.github/workflows/ci.yml` — `timeout-minutes` do `invariants-majors` | 45 → 60. O upstream roda essa perna em runner próprio; no fork ela cai no `ubuntu-latest` e foi cortada três vezes 1 s depois de a suíte terminar verde (2.662 s de teste) | Responsável pelo fork, 2026-11-26 | Recolocar 60 |
 | `tests/unit/preambulo-do-ci-nao-come-o-relogio.test.ts` | `TETOS["ci.yml::invariants-majors"].minutos` 45 → 60, o mesmo número do ci.yml (o teste exige que batam) | idem | Recolocar 60 |
+| `scripts/pr-alcanca-o-e2e.sh` | `scripts/anima/*` e os arquivos da raiz `Makefile`, `docker-compose.anima.yml`, `.env.anima.example` e `.anima-upstream` não alcançam o e2e: PR só de operação do servidor ou de seeds não paga as oito partes (~25 min) | Responsável pelo fork, 2026-11-26 | Recolocar as duas linhas marcadas "Fork Ânima" no `case` |
+| `scripts/pr-mexe-na-imagem.sh`, `.dockerignore` | Os mesmos arquivos saem do contexto da imagem (nada deles roda nela) e o script, espelho do `.dockerignore`, os pula | idem | Recolocar o bloco "Fork Ânima" no fim do `.dockerignore` e as duas linhas no script |
 
 **Valores copiados à mão do DS:** nenhum. Todo valor sai do pacote pelo gerador.
 

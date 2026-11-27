@@ -25,13 +25,43 @@ jobs:
     permissions:
       contents: read
       packages: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
 
+      # Mesma régua do upstream (scripts/pr-mexe-na-imagem.sh, espelho do
+      # .dockerignore): PR que só mexe no que fica fora do contexto de build não
+      # constrói. O job continua existindo e termina verde, com o motivo no log.
+      # Na dúvida (dispatch, API fora, lista enorme), constrói.
+      - name: O PR mexe no que entra na imagem?
+        id: alcance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then
+            echo "imagem=sim" >> "$GITHUB_OUTPUT"; echo "evento ${GITHUB_EVENT_NAME}: constrói"; exit 0
+          fi
+          if ! arquivos=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR}/files" --jq '.[].filename'); then
+            echo "imagem=sim" >> "$GITHUB_OUTPUT"; echo "::warning::não consegui listar os arquivos do PR — constrói"; exit 0
+          fi
+          n=$(printf '%s\n' "$arquivos" | grep -c . || true)
+          if [ "$n" -ge 3000 ]; then
+            resposta=sim
+          else
+            resposta=$(printf '%s\n' "$arquivos" | bash scripts/pr-mexe-na-imagem.sh) || resposta=sim
+          fi
+          [ "$resposta" = "nao" ] || resposta=sim
+          echo "imagem=${resposta}" >> "$GITHUB_OUTPUT"
+          echo "${n} arquivo(s) no PR → imagem=${resposta}"
+
       - name: Set up Buildx
+        if: steps.alcance.outputs.imagem == 'sim'
         uses: docker/setup-buildx-action@v4
 
       - name: Build (sem publicar)
+        if: steps.alcance.outputs.imagem == 'sim'
         uses: docker/build-push-action@v7
         with:
           context: .
