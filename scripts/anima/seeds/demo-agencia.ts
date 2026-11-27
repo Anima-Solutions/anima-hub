@@ -42,6 +42,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import { credenciaisSupabaseDeTeste } from "../../lib/env-de-teste";
+import { destinoDoSeedEhLocal } from "./destino";
 import { regrasDeDemonstracao } from "../../lib/automacoes-de-demonstracao";
 import { PONTEIRO_DE_DEMONSTRACAO } from "../../lib/followups-de-demonstracao";
 import { GRAFO_DE_DEMONSTRACAO } from "../../lib/grafo-de-demonstracao";
@@ -77,28 +78,8 @@ const DIA = 24 * HORA;
 
 // ── Destino ──────────────────────────────────────────────────────────────────
 
-/**
- * Loopback, IPv4 privado (RFC 1918) LITERAL, ou o apelido interno do gateway do Supabase no
- * servidor. Nenhum outro nome de DNS passa: pode resolver para qualquer lugar.
- */
-export function destinoDaDemoEhLocal(url: string): boolean {
-  let host: string;
-  try {
-    host = new URL(url).hostname.toLowerCase();
-  } catch {
-    return false;
-  }
-  if (host === "localhost" || host === "[::1]" || host === "host.docker.internal") return true;
-  // O gateway do Supabase na rede interna do servidor (apelido do kit,
-  // hostgator-setup-kit/supabase-single-server.override.yml). Só resolve de DENTRO dessa rede
-  // Docker: é por ele que o `make seeds-demo` da VPS escreve, e de fora ele não existe.
-  if (host === "supabase-envoy") return true;
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
-  if (!m) return false;
-  const [a, b] = [Number(m[1]), Number(m[2])];
-  if ([m[1], m[2], m[3], m[4]].some((o) => Number(o) > 255)) return false;
-  return a === 127 || a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
-}
+/** Regra em `./destino.ts`, compartilhada com o seed da Ânima Hub. */
+export const destinoDaDemoEhLocal = destinoDoSeedEhLocal;
 
 // ── Ajudantes ────────────────────────────────────────────────────────────────
 

@@ -115,6 +115,11 @@ mantém a sua. Conta que já é admin da plataforma ou membro de outra organiza�
 senha trocada (senha fácil ali abriria dados reais): o seed avisa e ela entra com a senha atual.
 O e-mail e a senha não ficam no repositório, que é público.
 
+Use para a demo um e-mail **diferente** da conta real da pessoa — na Ânima, o `+demo`
+(`nome+demo@animahub.ai` chega na mesma caixa). Mesma conta nas duas organizações faria a senha
+fácil da demo abrir os dados reais; o seed da Ânima Hub (seção 3.2) recusa incluir uma conta que
+só existe na demonstração.
+
 `RECRIAR=1` apaga tudo da organização de demonstração, **inclusive a chave de IA** cadastrada nela.
 
 **Onde roda.** Na sua máquina, contra o Supabase local (loopback ou IP privado). **No servidor**,
@@ -122,6 +127,38 @@ o mesmo `make seeds-demo` roda num contêiner `node:22-alpine` descartável, na 
 Supabase (o servidor não tem Node e a imagem do app não leva `scripts/anima/`). O script recusa,
 sem opção de forçar, qualquer outro destino: da sua máquina, a produção nunca é alvo. Os dados são
 fixos, e um PR que só mexe em `scripts/anima/seeds/` pula o e2e e o build da imagem.
+
+### 3.2 Organização Ânima Hub (seed real)
+
+`make seeds-anima` deixa a organização **de verdade** pronta: identidade (nome, razão social,
+CNPJ, e-mail do encarregado de dados — que aparece no PDF de LGPD —, fuso e idioma), a equipe
+com papel, admin da plataforma e jornada de atendimento, e a IA (provedor e modelo padrão, teto
+mensal em "avisar", e opcionalmente agentes em **rascunho** e perguntas frequentes).
+
+Os dados vêm de um JSON **fora do git**, porque o repositório é público:
+
+```bash
+mkdir -p .runtime && cp scripts/anima/seeds/anima.seed.example.json .runtime/anima.seed.json
+chmod 600 .runtime/anima.seed.json   # preencha; o exemplo (e-mails @example.com) é recusado
+make seeds-anima                     # no servidor; local: make seeds-anima CONFIG=<arquivo>
+```
+
+Com o arquivo no lugar **antes** do `make server-install`, a instalação já termina com a
+organização pronta. O caminho é `ANIMA_SEED_FILE` no `.env`.
+
+Regras, para rodar quantas vezes precisar sem estragar nada:
+
+- **Qual organização.** A do `organizacao.slug`; se não existe, a **única** da instalação (a
+  que o `install.sh` criou com o dono) é adotada e renomeada; nenhuma, cria; mais de uma sem o
+  slug, para e pede o slug.
+- **Contas novas** nascem com senha provisória forte, mostrada **uma vez** no fim, e troca
+  obrigatória no primeiro acesso. **Contas existentes** entram com a senha que já têm — o seed
+  nunca vê nem muda senha. Conta que só existe na demonstração é recusada.
+- **O arquivo manda** na identidade da organização, no papel de cada pessoa e no par
+  provedor/modelo. Jornada, orçamento, agentes e perguntas só são **criados quando faltam**: o
+  que alguém mudou pela tela fica.
+- **Nunca revoga nem reativa**: quem saiu da equipe pela tela continua fora.
+- **Chave de IA** continua só pela tela (IA › Credenciais).
 
 O `.npmrc` do projeto tem somente:
 
@@ -474,6 +511,7 @@ os scripts do `pnpm` (desenvolvimento). Os alvos destrutivos pedem confirmação
 | `make dev` | WAHA local (`docker compose up -d`) e `pnpm dev` |
 | `make check` | `pnpm typecheck`, `pnpm lint`, `pnpm test:unit` |
 | `make e2e` | `pnpm test:e2e` |
+| `make seeds-anima` | Organização real Ânima Hub a partir de `.runtime/anima.seed.json` (seção 3.2) |
 | `make seeds-demo` | Organização de demonstração, local ou no servidor (`DEMONSTRADOR=`, `SENHA=`, `RECRIAR=1`, `EMAIL=`, `IA_PROVEDOR=`, `IA_MODELO=`; seção 3.1) |
 | `make seeds-check` | Typecheck e testes dos seeds de demonstração |
 | `make ds-update` | Atualiza o DS, roda o gerador de tokens e `check` (major pede `ALLOW_MAJOR=1`) |
