@@ -125,7 +125,7 @@ cd /srv/stacks/deskcomm
 sudo mkdir -p /srv/appdata/deskcomm /srv/storage/deskcomm /srv/backups/deskcomm
 sudo chown -R "$USER" /srv/appdata/deskcomm /srv/storage/deskcomm /srv/backups/deskcomm
 make setup
-#    edite o .env: DOMAIN, ACME_EMAIL, PROXY_NETWORK_APP_IP (livre na sub-rede que o setup mostra),
+#    edite o .env: DOMAIN, PROXY_NETWORK_APP_IP (livre na sub-rede que o setup mostra),
 #    RESEND_API_KEY, RESEND_FROM_EMAIL
 #    cole o PAT (read:packages) em .runtime/npm-token
 
@@ -138,6 +138,10 @@ make server-install
 # 5. Versão Ânima: build no servidor, banco, troca da imagem, saúde
 make deploy TAG=2026.11.1
 ```
+
+O `make server-install` grava `SUPABASE_SERVER_URL=http://supabase-envoy:8000` no `.env` quando
+ela está vazia. Com o NPM o Caddy do kit não sobe, e sem ela o app procura o Supabase pelo domínio
+público, que não resolve por dentro do contêiner (`fetch failed` no login).
 
 O `make server-install` sobe primeiro as **imagens oficiais** da versão de `.anima-upstream`: o
 `install.sh` do kit grava a mesma tag para app, worker e scheduler, e só essas três existem
@@ -365,6 +369,8 @@ A marca mora **no banco**, não na imagem. O `.env` é só a semente:
 | Domínio responde `502` depois de um deploy | `PROXY_NETWORK_APP_IP` diferente do IP do Proxy Host | Alinhar o `.env` com o Proxy Host do NPM |
 | `external volume "deskcomm_waha-data" not found` | `make setup` não rodou | `make setup` (cria os volumes ligados às pastas) |
 | Serviços não sobem com bind em `/srv/...` | Pasta ausente ou dono errado | `make setup`; conferir `ls -ld /srv/appdata/deskcomm/*` |
+| Login não entra e o log do app mostra `TypeError: fetch failed` | `SUPABASE_SERVER_URL` ausente no `.env` (instalação anterior a esta correção) | Acrescentar `SUPABASE_SERVER_URL=http://supabase-envoy:8000` e `make up`. O `make health` acusa |
+| Build falha com `ERR_INVALID_CHAR` no header `authorization` | Quebra de linha ou espaço no arquivo do token | O `make build` já limpa; em versão antiga, regravar `.runtime/npm-token` numa linha só |
 | `/auth/v1` responde `502`, login não entra | Gateway do Supabase fora da rede do NPM (Supabase recriado) | `make supabase-proxy` |
 | `make deploy` recusa "mudanças não commitadas" | Arquivo do repositório editado no servidor | `git status`; o servidor não guarda mudança de código |
 | Depois de um update o app perdeu a cara Ânima | Rodaram o `update.sh` do upstream | `make update TAG=<versão>` ou `make rollback` (seção 5) |

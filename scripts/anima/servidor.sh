@@ -154,14 +154,30 @@ cmd_server_install() {
     gravar_env APP_IMAGE "${IMG_APP}:$(versao_base)"
   fi
 
+  # Com o Caddy do kit, o app chega ao Supabase pelo apelido DOMAIN na rede
+  # interna. Com o NPM, o Caddy não sobe e o apelido some: sem esta variável o
+  # servidor do app chama https://DOMAIN, que não resolve por dentro, e todo
+  # login vira `fetch failed`. O apelido supabase-envoy é do
+  # hostgator-setup-kit/supabase-single-server.override.yml. Gravar ANTES do
+  # instalador faz o app nascer já com ela (o install.sh preserva o que não é dele).
+  gravar_supabase_server_url
+
   step "Instalador do kit (Supabase no servidor + CRM)"
   REVERSE_PROXY=npm bash "$KIT_DIR/install-single-server.sh" --domain "$DOMAIN"
 
   # O instalador grava APP_NAME=DeskcommCRM; a semente Ânima volta.
   load_env .env
   gravar_env APP_NAME "Ânima Hub"
+  gravar_supabase_server_url
   cmd_supabase_proxy
   c_grn "✓ instalação base pronta. Próximo passo: make deploy TAG=<versão do fork>"
+}
+
+SUPABASE_URL_INTERNA="http://supabase-envoy:8000"
+gravar_supabase_server_url() {
+  [ -n "${SUPABASE_SERVER_URL:-}" ] && return 0
+  gravar_env SUPABASE_SERVER_URL "$SUPABASE_URL_INTERNA"
+  c_grn "✓ SUPABASE_SERVER_URL=$SUPABASE_URL_INTERNA (o app fala com o Supabase pela rede interna)"
 }
 
 # O gateway do Supabase (envoy) atende /auth/v1, /rest/v1… Com o Caddy do kit
@@ -192,12 +208,20 @@ cmd_build() {
     [ "$(git rev-parse HEAD)" = "$(git rev-parse "$TAG^{commit}" 2>/dev/null)" ] \
       || die "O checkout não está na tag $TAG (git checkout $TAG, ou ALLOW_DIRTY=1 para construir o que está aqui)."
   fi
+  # O token vira header HTTP no pnpm: uma quebra de linha no fim do arquivo (o
+  # editor põe sozinho) reprova o build com ERR_INVALID_CHAR. O build lê uma
+  # cópia limpa, 600, apagada ao sair; o arquivo original não é tocado.
+  _SEGREDO_NPM="$(umask 077 && mktemp)"
+  trap 'rm -f "${_SEGREDO_NPM:-}"' EXIT
+  tr -d '\r\n\t ' < "$NPM_TOKEN_FILE" > "$_SEGREDO_NPM"
+  [ -s "$_SEGREDO_NPM" ] || die "O token em $NPM_TOKEN_FILE só tem espaços ou quebras de linha."
   step "Construindo ${ANIMA_IMAGE}:${TAG} (~10 min, ~8 GB de RAM livres)"
   DOCKER_BUILDKIT=1 docker build \
-    --secret "id=npm_token,src=$NPM_TOKEN_FILE" \
+    --secret "id=npm_token,src=$_SEGREDO_NPM" \
     --build-arg "APP_VERSION=$TAG" \
     --build-arg "NODE_HEAP_MB=$ANIMA_BUILD_HEAP_MB" \
     -t "${ANIMA_IMAGE}:${TAG}" .
+  rm -f "$_SEGREDO_NPM"
   c_grn "✓ imagem ${ANIMA_IMAGE}:${TAG}"
 }
 
@@ -243,6 +267,12 @@ cmd_health() {
   entrar
   local rc=0
   bash "$KIT_DIR/healthcheck.sh" || rc=1
+  # Só avisa: a variável é do operador, e o `make health` não regrava o .env.
+  if [ "${SINGLE_SERVER:-0}" = "1" ] && [ -z "${SUPABASE_SERVER_URL:-}" ]; then
+    c_red "⛔ SUPABASE_SERVER_URL vazio: com o NPM o app não alcança o Supabase (login com fetch failed)."
+    c_red "  Acrescente SUPABASE_SERVER_URL=$SUPABASE_URL_INTERNA ao .env e rode make up."
+    rc=1
+  fi
   [ "${SKIP_PUBLIC:-0}" = "1" ] || sonda_publica || rc=1
   return "$rc"
 }
