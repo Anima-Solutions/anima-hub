@@ -82,11 +82,17 @@ Com o Supabase local no ar, `make seeds-demo` cria a organização **Vértice Di
 |---|---|
 | Equipe | 5 pessoas (gestora, 3 vendedores, 1 leitora). Todo administrador da plataforma entra como admin |
 | CRM | 120 contatos, ~115 oportunidades nos funis "Comercial" e "Renovação e upsell", com notas na linha do tempo, valores pontuais e mensais, ganhos e perdidos com motivo |
-| Inbox | 45 conversas de WhatsApp (~190 mensagens) abertas, pendentes e resolvidas |
-| Agenda | 4 tipos de reunião e ~50 reuniões passadas e futuras (realizadas, faltas, canceladas, confirmadas) e 60 tarefas, algumas vencidas |
+| Inbox | 45 conversas de WhatsApp (~190 mensagens): 8 sem dono na aba Fila, algumas na aba Minhas de quem entra, o resto com a equipe, pendentes e resolvidas |
+| Agenda | 4 tipos de reunião, jornada seg–sex da equipe e ~50 reuniões passadas e futuras (realizadas, faltas, canceladas, confirmadas), mais 60 tarefas, algumas vencidas |
 | IA | 2 agentes em rascunho, base de perguntas frequentes, 3 regras de automação e 1 follow-up |
 
-**Nada age sozinho.** O número de WhatsApp nasce parado, os agentes, as regras e o follow-up nascem
+É feito para **demonstração**, não para desenvolvimento: a primeira conta com acesso recebe uma
+parte da carteira (oportunidades, conversas, tarefas e reuniões), para as abas "Minhas" não abrirem
+vazias.
+
+**Nada age sozinho.** O número de WhatsApp aparece conectado, mas não existe sessão no WAHA, então
+nada sai por ele. Com o worker no ar, a checagem de saúde pode marcá-lo como desconectado; rodar de
+novo com `RECRIAR=1` volta ao estado da demo. Os agentes, as regras e o follow-up nascem
 desligados, e os tipos de reunião não mandam lembrete. As mensagens entram como histórico
 importado, então nenhum agente nem automação responde a elas.
 

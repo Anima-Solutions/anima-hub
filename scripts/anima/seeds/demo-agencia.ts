@@ -8,8 +8,8 @@
  *
  * ─── O que ele NUNCA faz ────────────────────────────────────────────────────
  *
- * Nada aqui age sozinho. O número de WhatsApp nasce PARADO (`STOPPED`, sessão inexistente no
- * WAHA); os agentes, as regras e o follow-up nascem DESLIGADOS; os tipos de reunião não mandam
+ * Nada aqui age sozinho. O número de WhatsApp aparece conectado (`WORKING`), mas a sessão não
+ * existe no WAHA, então nada sai por ele; os agentes, as regras e o follow-up nascem DESLIGADOS; os tipos de reunião não mandam
  * lembrete; as mensagens são marcadas `historico_importado` (o gatilho não emite
  * `message.received`) e os pedidos de roteamento que as conversas geram são dados por
  * concluídos no fim. Ligar qualquer coisa é decisão de quem usa a demo, pela tela.
@@ -202,6 +202,26 @@ async function semearEquipe(
     "user_organizations",
     vinculos.map((v) => ({ ...v, organization_id: orgId, accepted_at: new Date().toISOString() })),
   );
+  // Jornada de atendimento (seg–sex, 9h–12h e 13h–18h): sem ela a Agenda não calcula
+  // horários livres e mostra erro para cada tipo de reunião.
+  const jornada = {
+    timezone: "America/Sao_Paulo",
+    windows: [1, 2, 3, 4, 5].flatMap((dow) => [
+      { dow, start: "09:00", end: "12:00" },
+      { dow, start: "13:00", end: "18:00" },
+    ]),
+  };
+  const { error: erroJornada } = await db.from("attendant_availability").upsert(
+    vinculos.map((v) => ({
+      organization_id: orgId,
+      user_id: v.user_id,
+      is_available: true,
+      capacity: 10,
+      schedule: jornada,
+    })) as never,
+    { onConflict: "organization_id,user_id" },
+  );
+  if (erroJornada) throw new Error(`jornada da equipe: ${erroJornada.message}`);
   return { equipe, acesso: [...acesso] };
 }
 
@@ -210,7 +230,7 @@ async function semearEquipe(
 /**
  * A organização nova nasce com moldes de gatilho (`fn_seed_default_pipeline_for_org`,
  * `fn_semear_tipos_de_agendamento_na_org_nova`): o funil "Pedidos", vazio, e tipos de
- * agendamento de clínica. A agência tem os dela; o funil sai e os tipos que não servem desligam.
+ * agendamento genéricos. A agência tem os dela: o funil sai e os tipos molde desligam.
  */
 async function limparMoldes(db: SupabaseClient, orgId: string): Promise<void> {
   const { error } = await db.from("crm_pipelines").delete().eq("organization_id", orgId);
@@ -219,7 +239,7 @@ async function limparMoldes(db: SupabaseClient, orgId: string): Promise<void> {
     .from("calendar_event_types")
     .update({ is_active: false } as never)
     .eq("organization_id", orgId)
-    .in("slug", ["consulta", "atendimento"]);
+    .in("slug", ["consulta", "atendimento", "reuniao"]);
   if (erroTipos) throw new Error(`desligar tipos molde: ${erroTipos.message}`);
 }
 
@@ -437,8 +457,10 @@ async function semearConversas(
     waha_session_name: "demo-vertice-comercial",
     display_name: "WhatsApp Comercial (demonstração)",
     phone_number: "+5511900000000",
-    status: "STOPPED",
-    status_reason: "Número de demonstração: não há sessão no WAHA.",
+    // Aparece CONECTADO, para a demo não abrir com a faixa de "desconectado". Não existe
+    // sessão no WAHA: com o worker no ar, a checagem de saúde pode derrubar o status, e
+    // nada sai de verdade por este número (as mensagens daqui são todas históricas).
+    status: "WORKING",
     webhook_secret_encrypted: "\\x00",
     // A conversa nova não cria negócio: os negócios já vêm do seed.
     conversa_nova_cria_negocio: false,
@@ -470,31 +492,35 @@ async function semearConversas(
     const horarios = roteiro.map((_, k) => fim + (roteiro.length - 1 - k) * passo);
     const ultima = roteiro[roteiro.length - 1]!;
     const aberta = o.status === "open";
+    const clienteEsperando = aberta && ultima.quem === "cliente";
+    // Metade de quem espera resposta fica SEM DONO: é o que a aba Fila (a que o Inbox abre)
+    // mostra. O resto tem dono, e uma parte é de quem entra na demo (aba Minhas).
+    const naFila = clienteEsperando && n % 2 === 0;
     const status = !aberta
       ? "resolved"
-      : ultima.quem === "cliente"
-        ? n % 3 === 0
-          ? "pending"
-          : "open"
+      : clienteEsperando && !naFila && n % 3 === 0
+        ? "pending"
         : "open";
     const ultimaDoCliente = [...roteiro].reverse().findIndex((f) => f.quem === "cliente");
     const ultimaDaEquipe = [...roteiro].reverse().findIndex((f) => f.quem === "equipe");
+    const horaDoCliente =
+      ultimaDoCliente >= 0 ? quando(horarios[roteiro.length - 1 - ultimaDoCliente]!) : null;
 
     const conversa = await idDe(db, "conversations", {
       organization_id: orgId,
       contact_id: contatos[o.contato],
       channel_session_id: sessao,
       status,
-      assignee_kind: "user",
-      assigned_to_user_id: equipe[o.dono],
-      assigned_at: quando(o.idadeDias * DIA),
+      assignee_kind: naFila ? null : "user",
+      assigned_to_user_id: naFila ? null : equipe[o.dono],
+      assigned_at: naFila ? null : quando(o.idadeDias * DIA),
+      awaiting_since: clienteEsperando ? horaDoCliente : null,
       last_message_at: quando(fim),
       last_message_preview: preencher(ultima.texto, p).slice(0, 120),
-      last_inbound_at:
-        ultimaDoCliente >= 0 ? quando(horarios[roteiro.length - 1 - ultimaDoCliente]!) : null,
+      last_inbound_at: horaDoCliente,
       last_outbound_at:
         ultimaDaEquipe >= 0 ? quando(horarios[roteiro.length - 1 - ultimaDaEquipe]!) : null,
-      unread_count_for_assignee: aberta && ultima.quem === "cliente" ? r.inteiro(1, 3) : 0,
+      unread_count_for_assignee: clienteEsperando ? r.inteiro(1, 3) : 0,
       tags: [o.servico.tag],
       created_at: quando(horarios[0]! + HORA),
       metadata: { seed: MARCA, lead_id: leadIds[i] },
@@ -535,6 +561,17 @@ async function semearConversas(
 
 // ── Agenda e tarefas ─────────────────────────────────────────────────────────
 
+/**
+ * Dia relativo a hoje, numa hora de relógio de São Paulo (UTC−3, sem horário de verão desde
+ * 2019). Não depende do fuso da máquina que roda o seed.
+ */
+function horarioDeSaoPaulo(diasDeHoje: number, hora: number, minuto: number): Date {
+  const dia = new Date(Date.now() - 3 * HORA + diasDeHoje * DIA);
+  return new Date(
+    Date.UTC(dia.getUTCFullYear(), dia.getUTCMonth(), dia.getUTCDate(), hora + 3, minuto),
+  );
+}
+
 async function semearAgenda(
   db: SupabaseClient,
   orgId: string,
@@ -554,6 +591,8 @@ async function semearAgenda(
       duration_minutes: t.minutos,
       location_kind: "video_link",
       reminder_enabled: false,
+      // Sem responsável padrão a Agenda recusa calcular horários livres do tipo.
+      default_owner_user_id: equipe.marina,
       position: i,
     })),
   );
@@ -569,8 +608,7 @@ async function semearAgenda(
       // Abertos em diagnóstico/proposta/negociação: reunião FUTURA (até 3 semanas). Demais: passada.
       const futura = o.status === "open" && n % 3 !== 0;
       const dias = futura ? r.inteiro(0, 21) : -r.inteiro(1, 30);
-      const inicio = new Date(Date.now() + dias * DIA);
-      inicio.setHours(r.um([9, 10, 11, 14, 15, 16, 17]), r.um([0, 30]), 0, 0);
+      const inicio = horarioDeSaoPaulo(dias, r.um([9, 10, 11, 14, 15, 16, 17]), r.um([0, 30]));
       const statusPassado = r.chance(0.75) ? "completed" : r.chance(0.5) ? "no_show" : "cancelled";
       const status = futura ? (r.chance(0.8) ? "confirmed" : "pending") : statusPassado;
       return {
@@ -616,8 +654,10 @@ async function semearTarefas(
         organization_id: orgId,
         title: r.um(TAREFAS),
         description: null,
-        due_date: new Date(
-          Date.now() + (vencida ? -r.inteiro(1, 6) : r.inteiro(0, 14)) * DIA,
+        due_date: horarioDeSaoPaulo(
+          vencida ? -r.inteiro(1, 6) : r.inteiro(0, 14),
+          18,
+          0,
         ).toISOString(),
         priority: r.um(["low", "medium", "medium", "high", "urgent"] as const),
         status: feita ? "done" : n % 7 === 0 ? "in_progress" : "pending",
@@ -752,6 +792,16 @@ async function main(): Promise<void> {
   const gente = pessoas(sorteador(2026), 120);
   const contatos = await semearContatos(db, orgId, gente);
   const plano = planejarOportunidades(sorteador(42), contatos.length);
+  // Quem entra na demo também tem carteira: 1 de cada 6 oportunidades abertas (com a
+  // conversa, as tarefas e as reuniões dela) passa para a primeira conta com acesso.
+  if (acesso[0]) {
+    equipe.voce = acesso[0];
+    plano
+      .filter((o) => o.status === "open")
+      .forEach((o, k) => {
+        if (k % 6 === 0) o.dono = "voce";
+      });
+  }
   const { ids: leadIds, atividades } = await semearOportunidades(
     db,
     orgId,
@@ -772,7 +822,7 @@ async function main(): Promise<void> {
       `\n✅ ${ORGANIZACAO.nome}`,
       `   equipe: ${EQUIPE.length} pessoas · acesso de admin para ${acesso.length} conta(s) da plataforma`,
       `   CRM: ${contatos.length} contatos · ${leadIds.length} oportunidades em ${FUNIS.length} funis · ${atividades} notas`,
-      `   Inbox: ${conversas.conversas} conversas · ${conversas.mensagens} mensagens (número PARADO)`,
+      `   Inbox: ${conversas.conversas} conversas · ${conversas.mensagens} mensagens (número aparece conectado; nada sai)`,
       `   Agenda: ${reunioes} reuniões · ${tarefas} tarefas`,
       `   IA: ${ia.agentes} agentes em rascunho · ${ia.perguntas} perguntas frequentes · ${ia.regras} regras e 1 follow-up DESLIGADOS`,
       `   eventos de roteamento encerrados: ${eventos}`,
