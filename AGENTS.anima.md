@@ -117,7 +117,8 @@ Cada arquivo do upstream alterado é um conflito em potencial a cada sync. Toque
   imagem de produção é construída no servidor (`make build`); o CI só prova em PR que ela constrói.
 - `docs/anima/**`, `AGENTS.anima.md` e o banner de uma linha no topo do `README.md`.
 - **Arquivos novos da Ânima** (não existem no upstream, então não geram conflito): `Makefile`,
-  `docker-compose.anima.yml` e `.env.anima.example` (seções 8 e 9).
+  `docker-compose.anima.yml`, `.env.anima.example`, `.anima-upstream` (versão do upstream em que o
+  fork se baseia) e `scripts/anima/**` (seções 8 e 9).
 
 Qualquer arquivo fora dessa lista exige **aprovação do usuário antes** e um registro em
 `docs/anima/PATCHES.md` (arquivo, motivo, data, como reaplicar se o sync sobrescrever).

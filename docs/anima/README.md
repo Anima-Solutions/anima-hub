@@ -24,15 +24,18 @@ da Ânima. O fork vive em `Anima-Solutions/anima-hub` e recebe o upstream por ta
 | Raios e sombras do DS | |
 | Logo e nome Ânima Hub (pelo `/admin/marca`, no banco) | |
 
-**Estado em 2026-11-26:** só existe a documentação. Nenhum token foi trocado ainda.
+**Estado em 2026-11-26:** Nível 1 aplicado e verificado na tela (PR #1; evidência em
+[`evidencias/nivel-1/`](evidencias/nivel-1/README.md)). Operação do servidor pelo `Makefile`
+(seções 4, 5 e 12), ainda não exercitada num servidor real.
 
 **Decisões tomadas (2026-11-26):** imagem do app **construída no próprio servidor** (`make build`), sem
 registro; worker e scheduler
 com as imagens oficiais do upstream; Supabase self-hosted no mesmo servidor; tema escuro como
 padrão (com patch aprovado em `lib/theme.tsx`).
 
-**Ponto de partida do fork:** um commit da `main` do upstream posterior à **v1.125.0** e anterior à
-**v1.126.0** (`7ef344257`). O primeiro sync recomendado é para a `v1.126.0`.
+**Ponto de partida do fork:** o commit `7ef344257` da `main` do upstream. Ele difere da **v1.126.0**
+só pelo corte da versão (`CHANGELOG.md` e `.changes/`, nenhum código), então a base registrada em
+`.anima-upstream` é `1.126.0`: é a versão das imagens de worker e scheduler.
 
 **Futuro:** está previsto um front próprio (Nível 4) sobre a API `/api/v1`. Por isso, o mapeamento
 de tokens é mantido como uma camada isolada e reaproveitável.
@@ -63,14 +66,14 @@ git fetch upstream --tags
 export NPM_TOKEN=ghp_...            # read:packages; nunca commite
 nvm use && corepack enable
 cp .env.example .env.local          # preencha (ver README.md do upstream)
-make install                        # 🚧 hoje: pnpm install
-make dev                            # 🚧 hoje: docker compose up -d && pnpm dev
+make install                        # pnpm install com o token do DS
+make dev                            # docker compose up -d (WAHA) && pnpm dev
 ```
 
 Para o stack local completo (Supabase local, app, worker, scheduler, WAHA e Redis), rode uma vez
 `./ubuntu-local-installer.sh` e depois use `pnpm local:up | local:down | local:status | local:logs`.
 
-O `.npmrc` do projeto (🚧, entra junto com a dependência do DS) terá somente:
+O `.npmrc` do projeto tem somente:
 
 ```ini
 @anima-solutions:registry=https://npm.pkg.github.com/
@@ -79,98 +82,137 @@ O `.npmrc` do projeto (🚧, entra junto com a dependência do DS) terá somente
 
 ## 4. Instalação em servidor
 
-O ponto de partida é o kit do upstream (`hostgator-setup-kit/`), com três diferenças:
+O ponto de partida é o kit do upstream (`hostgator-setup-kit/`), operado pelo `Makefile`
+(`scripts/anima/servidor.sh`). As diferenças em relação à instalação oficial:
 
 1. **Imagem do app construída no servidor** (`make build`), a partir do fork, em vez de puxar
-   `ghcr.io/melgarafael/deskcommcrm` (decidido em 2026-11-26). Ver a seção 4.2.
+   `ghcr.io/melgarafael/deskcommcrm` (decidido em 2026-11-26). Ver a seção 4.3.
 2. **Worker e scheduler usam as imagens oficiais** do upstream (`ghcr.io/melgarafael/deskcomm-worker`
-   e `deskcomm-scheduler`), na mesma tag de versão do upstream em que o fork se baseia. O Nível 1
-   não altera nada que eles executam (decidido em 2026-11-26).
+   e `deskcomm-scheduler`) na versão em que o fork se baseia, gravada em **`.anima-upstream`**
+   (hoje `1.126.0`; o `make sync-upstream` a atualiza). O Nível 1 não altera nada que eles executam.
 3. **Proxy e pastas:** o Caddy do projeto não sobe. Na frente fica o **Nginx Proxy Manager**, na
    rede `anima_proxymanager_shared_network`, e os dados vão para `/srv/...` (seção 11).
-4. **Supabase self-hosted no mesmo servidor** (decidido em 2026-11-26). Veja a seção 4.1.
+4. **Supabase self-hosted no mesmo servidor**, pelo instalador do kit (seção 4.1).
+5. **Versão do fork:** tag git `ANO.MES.SEQUENCIAL` (ex.: `2026.11.1`, sem `v`, para não se
+   misturar às tags `vX.Y.Z` do upstream). A imagem sai como `anima-hub:<versão>`.
 
-Comando de subida (encapsulado pelo `make up`, 🚧):
+Comando de subida (é o que o `make up` roda; `make config` mostra o resultado combinado):
 
 ```bash
 docker compose -p deskcomm \
-  -f docker-compose.prod.yml -f docker-compose.npm.yml -f docker-compose.anima.yml \
+  -f docker-compose.prod.yml -f docker-compose.single-server.yml \
+  -f docker-compose.npm.yml -f docker-compose.anima.yml \
   --env-file .env up -d
 ```
 
-O `docker-compose.npm.yml` do upstream lê `PROXY_NETWORK_NAME` e `PROXY_NETWORK_APP_IP`. No `.env`:
+### Passo a passo da primeira instalação
 
-```ini
-PROXY_NETWORK_NAME=anima_proxymanager_shared_network
-PROXY_NETWORK_APP_IP=<IP fixo que o Proxy Host do NPM aponta>
+Pré-requisitos no servidor: Docker com Compose v2, `git`, `make`, `curl`, `jq`, `openssl`, o NPM
+no ar (ele cria a rede `anima_proxymanager_shared_network`) e o DNS do domínio apontando para o
+servidor.
+
+```bash
+# 1. Código: clone do fork com uma deploy key só de leitura
+#    (GitHub › anima-hub › Settings › Deploy keys › Add, sem "Allow write access")
+sudo mkdir -p /srv/stacks && sudo chown "$USER" /srv/stacks
+ssh-keygen -t ed25519 -f ~/.ssh/anima-hub-deploy -N '' -C 'deploy anima-hub'
+cat ~/.ssh/anima-hub-deploy.pub      # cole em Deploy keys
+git clone -c core.sshCommand='ssh -i ~/.ssh/anima-hub-deploy' \
+  git@github.com:Anima-Solutions/anima-hub.git /srv/stacks/deskcomm
+cd /srv/stacks/deskcomm
+
+# 2. Pastas, volumes, .env e arquivo do token
+sudo mkdir -p /srv/appdata/deskcomm /srv/storage/deskcomm /srv/backups/deskcomm
+sudo chown -R "$USER" /srv/appdata/deskcomm /srv/storage/deskcomm /srv/backups/deskcomm
+make setup
+#    edite o .env: DOMAIN, ACME_EMAIL, PROXY_NETWORK_APP_IP (livre na sub-rede que o setup mostra),
+#    RESEND_API_KEY, RESEND_FROM_EMAIL
+#    cole o PAT (read:packages) em .runtime/npm-token
+
+# 3. NPM: crie o Proxy Host do domínio ANTES do passo 4 (tabela abaixo)
+
+# 4. Supabase no servidor, banco, segredos e dono (instalador do kit, sem perguntas)
+make server-install
+#    o usuário e a senha iniciais ficam em .runtime/admin-credentials (600)
+
+# 5. Versão Ânima: build no servidor, banco, troca da imagem, saúde
+make deploy TAG=2026.11.1
 ```
 
-Fluxo previsto (🚧): `make setup` → editar `.env` → `make deploy TAG=<versão>` (constrói e sobe) → criar o Proxy Host
-no NPM apontando para `PROXY_NETWORK_APP_IP:3000` → `make health`.
+O `make server-install` sobe primeiro as **imagens oficiais** da versão de `.anima-upstream`: o
+`install.sh` do kit grava a mesma tag para app, worker e scheduler, e só essas três existem
+publicadas juntas. Ele cria o banco, os segredos e o dono. O `make deploy` troca em seguida só o app
+pela imagem Ânima.
 
-**Verificação depois de qualquer deploy:** `/` responde `200` e `/app` responde `307` (redireciona
-para o login). Um `200` sozinho não prova que quem respondeu foi o app.
+**Proxy Host no NPM** (um só, para o domínio, com SSL e *Websockets Support* ligado):
+
+| Caminho (*Custom locations*) | Encaminhar para |
+|---|---|
+| `/` (o Proxy Host em si) | `http://deskcomm-app:3000` (ou `PROXY_NETWORK_APP_IP:3000`) |
+| `/auth/v1`, `/rest/v1`, `/realtime/v1`, `/storage/v1`, `/functions/v1`, `/graphql/v1` | `http://deskcomm-supabase-gw:8000` |
+| `/api/v1/webhooks/waha` | nenhum: aba *Advanced* da location com `return 403;` |
+
+O 403 reproduz o `Caddyfile.single-server` do kit: o webhook global do WAHA só pode chegar pela
+rede interna. O gateway do Supabase entra na rede do NPM pelo `make supabase-proxy` (o `up` e o
+`deploy` o repetem, porque recriar o Supabase desfaz a ligação).
+
+**Verificação depois de qualquer deploy** (o `make health` e o `make deploy` fazem): `/` responde
+`200` e `/app` responde `307` (redireciona para o login). Um `200` sozinho não prova que quem
+respondeu foi o app.
 
 ### 4.1 Supabase self-hosted
 
-O upstream tem um modo que instala o Supabase no mesmo servidor
-(`hostgator-setup-kit/install-single-server.sh` + `docker-compose.single-server.yml`). Ele roda o
-instalador oficial do Supabase (versão fixa em `SUPABASE_REF`, com checagem SHA-256) em
-`.runtime/supabase/` e liga o CRM e o Supabase por uma rede privada.
+O `make server-install` chama `hostgator-setup-kit/install-single-server.sh` com
+`REVERSE_PROXY=npm`. Ele roda o instalador oficial do Supabase (versão fixa em `SUPABASE_REF`,
+com checagem SHA-256) em `.runtime/supabase/` e liga o CRM e o Supabase por uma rede privada
+(`deskcomm_supabase`).
 
-> ⚠️ **Esse modo só suporta Caddy ou Traefik na frente, não o Nginx Proxy Manager.** O roteamento
-> que o Caddy faz no `Caddyfile.single-server` precisa ser reproduzido no NPM. 🚧 O desenho abaixo
-> ainda não foi testado.
-
-Roteamento no mesmo domínio (um Proxy Host no NPM com *Custom locations*):
-
-| Caminho | Destino |
-|---|---|
-| `/auth/v1`, `/rest/v1`, `/realtime/v1` (WebSocket), `/storage/v1`, `/functions/v1`, `/graphql/v1` | gateway do Supabase (`api-gw`, porta `8000`) |
-| `/api/v1/webhooks/waha` | **403** (o webhook global do WAHA não pode vir de fora) |
-| todo o resto | `app:3000` |
-
-Para isso, o `docker-compose.anima.yml` (🚧) também precisa colocar o `api-gw` do Supabase na rede
-`anima_proxymanager_shared_network`, com IP fixo próprio.
-
-Dados (🚧, via override do compose do Supabase):
+Onde ficam os dados do Supabase (**diverge do AGENTS.anima.md §8**; divergência aceita pelo responsável
+pelo fork em 2026-11-26):
 
 | Dado | Pasta |
 |---|---|
-| Postgres | `/srv/appdata/deskcomm/supabase-db/` |
-| Storage (bucket `whatsapp-media` e demais) | `/srv/storage/deskcomm/` |
-| Chaves geradas (`.runtime/supabase/.env`, `admin-credentials`) | `/srv/stacks/deskcomm/.runtime/` (permissão `700`, entra no backup) |
+| Postgres | `/srv/stacks/deskcomm/.runtime/supabase/volumes/db/data` |
+| Storage (bucket `whatsapp-media` e demais) | `/srv/stacks/deskcomm/.runtime/supabase/volumes/storage` |
+| Chaves geradas (`.runtime/supabase/.env`, `admin-credentials`) | `/srv/stacks/deskcomm/.runtime/` (permissão `700`) |
+
+O instalador oficial do Supabase recusa uma pasta de projeto que já exista (nem um link simbólico
+serve), e o kit lê esses caminhos fixos no backup e no restore. Movê-los para `/srv/appdata` e
+`/srv/storage` exigiria mudar o kit do upstream. O `make backup` leva o banco, os anexos e os dois
+`.env` para `/srv/backups/deskcomm/`.
 
 ### 4.2 Recursos
 
 O instalador do upstream recusa servidor com menos de **4 GB de RAM** e recomenda **8 GB** para o
-CRM com o Supabase no mesmo servidor. ❓ O consumo real do stack Ânima será medido antes do primeiro
-deploy e registrado aqui.
+CRM com o Supabase no mesmo servidor. O build da imagem pede ~8 GB livres na hora (seção 4.3).
+❓ O consumo real do stack Ânima será medido no primeiro deploy e registrado aqui.
 
-### 4.2 Como a imagem Ânima é gerada
+### 4.3 Como a imagem Ânima é gerada
 
 A imagem do app é **construída no próprio servidor**, a partir do código do fork, e não é publicada
 em registro nenhum (decidido em 2026-11-26). O CI só prova, em todo PR, que ela constrói
 (`.github/workflows/anima-imagem.yml`, sem publicar).
 
 ```bash
-# o que o `make build` (🚧) vai encapsular, no checkout do fork em /srv/stacks/deskcomm
-git fetch origin && git checkout <tag ou commit aprovado>
-docker build --secret id=npm_token,env=NPM_TOKEN \
-  --build-arg APP_VERSION=<versão> --build-arg NODE_HEAP_MB=6144 \
-  -t anima-hub:<versão> .
+make build TAG=2026.11.1    # exige o checkout na tag; ALLOW_DIRTY=1 constrói o que estiver aqui
+# equivale a:
+docker build --secret id=npm_token,src=.runtime/npm-token \
+  --build-arg APP_VERSION=2026.11.1 --build-arg NODE_HEAP_MB=6144 \
+  -t anima-hub:2026.11.1 .
 ```
 
-- **Token no servidor:** `NPM_TOKEN` (PAT do GitHub só com `read:packages`) no `.env` do servidor.
-  Entra no build como secret do BuildKit e não fica gravado em nenhuma camada.
+- **Token no servidor:** PAT do GitHub só com `read:packages`, no arquivo `NPM_TOKEN_FILE`
+  (padrão `.runtime/npm-token`, permissão `600`). **Não vai no `.env`:** o `.env` inteiro entra no
+  contêiner do app (`env_file`), e o token acabaria no ambiente dele. No build ele entra como
+  secret do BuildKit e não fica em nenhuma camada.
 - **Memória:** o `next build` precisa de ~6 GB de heap (com 4 GB, medido, falta memória). Reserve
   ~8 GB livres na hora do build, ou o build cai ou aperta o app em produção.
-- **Tempo:** ~10 min de CPU cheia por versão. Faça o build antes de parar o app: o `up -d` só troca
-  o contêiner depois da imagem pronta.
-- **Rollback:** a imagem só existe naquele disco. O `make build` mantém as anteriores com a tag
-  da versão (`anima-hub:<versão>`); `make rollback` volta para a registrada antes do update.
+- **Tempo:** ~10 min de CPU cheia por versão. O app atual segue no ar durante o build: o `up -d`
+  só troca o contêiner depois da imagem pronta.
+- **Rollback:** a imagem só existe naquele disco. Cada versão fica como `anima-hub:<versão>`; o
+  `.env` guarda a anterior em `ANIMA_PREVIOUS_IMAGE` e o `make rollback` volta para ela.
 - **Worker e scheduler** continuam sendo puxados do upstream (`ghcr.io/melgarafael/…`), na versão
-  em que o fork se baseia.
+  de `.anima-upstream`.
 
 **Acesso ao pacote do DS no CI.** Os testes do PR (`ci.yml`, `e2e.yml`) e o `anima-imagem.yml`
 instalam o DS com o `GITHUB_TOKEN` do workflow, sem PAT. Para funcionar, uma vez: pacote
@@ -190,34 +232,44 @@ continuam desabilitados.
 > `APP_IMAGE`, `WORKER_IMAGE`, `SCHEDULER_IMAGE` e `VOICE_AGENT_IMAGE` no `.env`. A instalação
 > voltaria para a imagem oficial, sem a identidade Ânima.
 
-Fluxo Ânima (🚧 `make update TAG=<versão>`):
+Lançar uma versão (na máquina de quem desenvolve, com a `main` do fork aprovada):
 
-1. Backup do banco, dos volumes e do `.env` em `/srv/backups/deskcomm/`.
-2. Registrar a imagem em uso (para o rollback).
-3. Construir a imagem Ânima da versão nova (`make build`) e gravar no `.env` o `APP_IMAGE` dela e
-   as oficiais do worker e do scheduler na mesma versão do upstream.
-4. Aplicar as migrations da versão nova (ver ⚠️ abaixo).
-5. `pull` (worker e scheduler) e `up -d` com os três compose files.
-6. Healthcheck (`/` = 200, `/app` = 307). Se falhar, rollback automático para a imagem registrada.
+```bash
+git switch main && git pull
+make tag TAG=2026.12.1     # tag anotada no commit atual + push
+```
 
-Rollback manual: `make rollback` (🚧). Ele pede confirmação, a menos que `YES=1`.
+No servidor, `make update TAG=2026.12.1` (o mesmo fluxo do `make deploy`):
 
-⚠️ O `update.sh` do upstream também aplica o apêndice do `supabase/baseline.sql` e faz outras
-checagens. O alvo `make update` precisa reproduzir essas etapas, ou chamar as funções do kit com o
-namespace Ânima. Isso será decidido ao escrever o `Makefile`.
+1. `git fetch --tags` e checkout da tag (recusa se o checkout tiver mudança não commitada).
+2. Backup (`make backup`): banco, sessões do WhatsApp, anexos do Storage e os dois `.env`.
+3. `make build` da tag. Até aqui, nada mudou no que está no ar.
+4. Banco: aplica o `supabase/baseline.sql` da versão nova (`reaplicar_baseline` do kit, o mesmo do
+   `update.sh`). Se não terminar limpo, para antes de trocar a imagem.
+5. Grava no `.env` o `APP_IMAGE` novo e, em `ANIMA_PREVIOUS_IMAGE` e `ANIMA_PREVIOUS_REF`, a imagem
+   e o código anteriores.
+6. `pull` do worker e do scheduler (versão de `.anima-upstream`) e `up -d`.
+7. Saúde: `/api/v1/health` por dentro e `/` = 200, `/app` = 307 por fora. Se falhar, **rollback
+   automático** para a imagem e o código anteriores.
+
+`make rollback` faz o mesmo retorno à mão (pede confirmação, a menos que `YES=1`). **O banco não
+volta:** o baseline só anda para frente, como no upstream (o `agent.sh` também reverte só a
+imagem).
+
+O que o `update.sh` do upstream faz e o `make update` **não** faz: preflight de disco, atualização
+do próprio Supabase (`atualizar_supabase_single_server`) e sincronização do SMTP com o GoTrue. Se
+um sync trouxer versão nova do Supabase (`SUPABASE_REF`) ou o "Requer atenção" pedir, trate à mão
+nesse dia.
 
 ## 6. Sync com o upstream
 
 Cadência **mensal**, sempre para uma **tag de release** (`vX.Y.Z`), nunca para a `main`.
 
 1. Ler no `CHANGELOG.md` as seções **"⚠️ Requer atenção"** de todas as versões do intervalo.
-2. `make sync-upstream TAG=vX.Y.Z` (🚧). Hoje, à mão:
-   ```bash
-   git fetch upstream --tags
-   git switch main && git pull
-   git switch -c sync/vX.Y.Z
-   git merge vX.Y.Z
-   ```
+2. `make sync-upstream TAG=vX.Y.Z`: busca o upstream, imprime os "Requer atenção" desde a versão de
+   `.anima-upstream`, cria `sync/vX.Y.Z` a partir da `main` do fork e faz o merge da tag. Sem
+   conflito, já grava a nova base em `.anima-upstream` e commita. Com conflito, resolva (passo 3),
+   commite o merge e rode `make sync-upstream-concluir TAG=vX.Y.Z`.
 3. Resolver os conflitos preservando a camada Ânima. Conferir cada linha do [`PATCHES.md`](PATCHES.md).
 4. Rodar os gates (`make check`, `make e2e`), capturar as telas principais nos dois temas e listar
    as cores cruas (`bg-red-500`…) e os controles crus (`<button>`, `<input>`, `<select>`) que
@@ -236,8 +288,9 @@ Se o intervalo trouxer mudança estrutural (Tailwind, Next, React ou reestrutura
 
 - **Pacote:** `@anima-solutions/design-system`, versão em uso: **2026.11.2** (✅ dependência do
   projeto). O pacote pede Node ≥ 24 (`engines`); o projeto usa 22, e o pnpm só avisa.
-- **Atualizar:** `make ds-update` (🚧), que instala a última versão, roda o gerador e depois
-  `make check`. Uma versão major pede aprovação antes.
+- **Atualizar:** `make ds-update`, que instala a última versão (exata), roda o gerador e depois
+  `make check`. Se o primeiro número da versão mudar, ele para e pede `ALLOW_MAJOR=1` (aprovação
+  antes, `AGENTS.anima.md` §10).
 - **Mapeamento de tokens (✅):** `scripts/anima/gerar-tokens-ds.ts` lê os `tokens/*.json` do pacote e
   reescreve **só os valores** das propriedades que já existem nos blocos `:root`,
   `[data-theme="light"]` e `[data-theme="dark"]` do `app/globals.css`. Depois regenera
@@ -285,8 +338,8 @@ A marca mora **no banco**, não na imagem. O `.env` é só a semente:
 - **Semente no `.env`:** `APP_NAME`, `APP_LOGO_URL` e `APP_ACCENT_HEX`. Valem só até alguém salvar
   pela tela, e servem de piso no rollback.
 - **E-mails de acesso** (criar conta e recuperar senha) são renderizados pelo Supabase Auth, fora
-  do app. Para aplicar a marca a eles: `make brand-emails` (🚧), que chama
-  `hostgator-setup-kit/marca-emails.sh` e lê o `.env`.
+  do app. Para aplicar a marca a eles: `make brand-emails`, que chama
+  `hostgator-setup-kit/marca-emails.sh` (lê o `.env`) e recria o `auth` do Supabase do servidor.
 - **Tema fixo** (`lib/anima/tema-fixo.ts`, `TEMA_FIXO = true`): nenhuma organização nem a
   instalação troca a cor ou a aparência. A cor gravada no banco ou em `APP_ACCENT_HEX` é ignorada
   na tela, nos e-mails e no ícone. A tela **Aparência** sai do menu e redireciona para Marca, e o
@@ -300,12 +353,15 @@ A marca mora **no banco**, não na imagem. O `.env` é só a semente:
 |---|---|---|
 | `401 Unauthorized` no `pnpm install` (npm.pkg.github.com) | `NPM_TOKEN` ausente, ou é o token do MCP | Exportar um token do GitHub com `read:packages` |
 | `404` para `@anima-solutions/design-system` | O escopo não está apontando para o GitHub Packages | Conferir o `.npmrc` (seção 3) |
-| `next build` morre com `heap out of memory` | Heap de 4 GB (padrão do `Dockerfile`) | `--build-arg NODE_HEAP_MB=6144` e ~8 GB livres (seção 4.2) |
-| Build da imagem falha com `401` ao instalar o DS | Secret do token não passado ao build, ou o pacote não libera o repositório | Servidor: `NPM_TOKEN` no `.env` e `--secret id=npm_token,env=NPM_TOKEN`. CI: liberar o acesso de Actions no pacote (seção 4.2) |
+| `next build` morre com `heap out of memory` | Heap de 4 GB (padrão do `Dockerfile`) | `--build-arg NODE_HEAP_MB=6144` e ~8 GB livres (seção 4.3) |
+| Build da imagem falha com `401` ao instalar o DS | Token ausente ou vencido, ou o pacote não libera o repositório | Servidor: PAT válido em `.runtime/npm-token` (`make build` usa o arquivo). CI: liberar o acesso de Actions no pacote (seção 4.3) |
 | Tela ilegível depois de um CSS personalizado | CSS do administrador sobrescrevendo tokens | Abrir a página com `?sem_css=1` para desligá-lo e corrigir em `/admin/marca` |
 | `network anima_proxymanager_shared_network declared as external, but could not be found` | O stack do NPM não criou a rede, ou ela tem outro nome | `docker network ls`; ajustar `PROXY_NETWORK_NAME` |
 | Domínio responde `502` depois de um deploy | `PROXY_NETWORK_APP_IP` diferente do IP do Proxy Host | Alinhar o `.env` com o Proxy Host do NPM |
-| Serviços não sobem com bind em `/srv/...` | Pasta ausente ou dono errado | `make setup` (🚧); conferir `ls -ld /srv/appdata/deskcomm/*` |
+| `external volume "deskcomm_waha-data" not found` | `make setup` não rodou | `make setup` (cria os volumes ligados às pastas) |
+| Serviços não sobem com bind em `/srv/...` | Pasta ausente ou dono errado | `make setup`; conferir `ls -ld /srv/appdata/deskcomm/*` |
+| `/auth/v1` responde `502`, login não entra | Gateway do Supabase fora da rede do NPM (Supabase recriado) | `make supabase-proxy` |
+| `make deploy` recusa "mudanças não commitadas" | Arquivo do repositório editado no servidor | `git status`; o servidor não guarda mudança de código |
 | Depois de um update o app perdeu a cara Ânima | Rodaram o `update.sh` do upstream | `make update TAG=<versão>` ou `make rollback` (seção 5) |
 
 ## 10. Registro de divergências
@@ -315,52 +371,62 @@ em [`PATCHES.md`](PATCHES.md), com o motivo e a forma de reaplicar depois de um 
 
 ## 11. Estrutura no servidor
 
-Nome do app = `COMPOSE_PROJECT_NAME` = **`deskcomm`**. Todos os caminhos vêm do `.env`, com padrão
-no `.env.anima.example` (🚧).
+Nome do app = `COMPOSE_PROJECT_NAME` = **`deskcomm`**. Todos os caminhos, a rede e os nomes vêm do
+`.env`, com padrão no [`.env.anima.example`](../../.env.anima.example).
 
 | Pasta | Conteúdo |
 |---|---|
-| `/srv/stacks/deskcomm/` | Compose files, `Makefile`, `.env`, configs (Caddyfile, asterisk) |
-| `/srv/storage/deskcomm/` | Arquivos (mídias e uploads fora do Supabase Storage) |
-| `/srv/appdata/deskcomm/<serviço>/` | Dados de cada serviço |
-| `/srv/backups/deskcomm/` | Backups (banco, volumes, `.env`) |
+| `/srv/stacks/deskcomm/` | Checkout do fork: compose files, `Makefile`, `.env`, `.runtime/` (Supabase, token do DS, credenciais iniciais) |
+| `/srv/storage/deskcomm/` | Arquivos: mídias do WAHA (`waha-media/`) |
+| `/srv/appdata/deskcomm/<serviço>/` | Dados de cada serviço que não são arquivo |
+| `/srv/backups/deskcomm/` | Backups: `db-*.sql.gz`, `waha-*.tgz`, `storage-*.tgz`, `env-*`, `supabase-env-*` |
 
-Mapa de volumes (🚧 `docker-compose.anima.yml`, bind via `driver_opts`). Os volumes nomeados vêm do
-`docker-compose.prod.yml` do upstream:
+Mapa de volumes. Os nomes vêm do `docker-compose.prod.yml` do upstream; o `make setup` cria cada um
+como volume local com bind para a pasta (`<projeto>_<volume>`), e o `docker-compose.anima.yml` os
+declara `external`. Assim o compose com o override e os scripts do kit (que rodam sem ele) usam os
+mesmos dados.
 
-| Volume nomeado | Destino |
+| Volume | Pasta |
 |---|---|
-| `waha-data`, `waha-media` | `/srv/appdata/deskcomm/waha/{data,media}` |
-| volume do `redis` | `/srv/appdata/deskcomm/redis/` |
-| `wacalls-data` | `/srv/appdata/deskcomm/wacalls/` |
-| `asterisk-data`, `asterisk-logs` | `/srv/appdata/deskcomm/asterisk/{data,logs}` |
+| `waha-data` (sessões pareadas) | `/srv/appdata/deskcomm/waha/sessions` |
+| `waha-media` | `/srv/storage/deskcomm/waha-media` |
+| `wacalls-data` (perfil `voz`) | `/srv/appdata/deskcomm/wacalls` |
+| `asterisk-data`, `asterisk-logs` (perfil `telefonia`) | `/srv/appdata/deskcomm/asterisk/{data,logs}` |
+| `redis` | sem volume: a fila é efêmera de propósito no upstream |
 | `caddy-data`, `caddy-config` | não usados (o Caddy não sobe com o NPM) |
+| Supabase (Postgres e Storage) | em `.runtime/supabase/volumes/` (seção 4.1) |
 
 Containers: `container_name: ${COMPOSE_PROJECT_NAME}-<serviço>` (`deskcomm-app`, `deskcomm-worker`,
-`deskcomm-waha`…).
+`deskcomm-waha`…). O Supabase é o projeto `deskcomm-supabase`, e o gateway dele entra na rede do
+NPM como `deskcomm-supabase-gw`.
 
 ## 12. Comandos rápidos
 
-Interface única do fork (🚧 o `Makefile` ainda será criado). Os alvos destrutivos pedem
-confirmação, a menos que `YES=1`.
+Interface única do fork: `Makefile` na raiz, que chama `scripts/anima/servidor.sh` (servidor) ou
+os scripts do `pnpm` (desenvolvimento). Os alvos destrutivos pedem confirmação, a menos que
+`YES=1`.
 
 | Alvo | O que faz |
 |---|---|
-| `make help` | Lista os alvos (padrão) |
-| `make setup` | Cria as pastas `/srv/...`, confere a rede do NPM e copia `.env.anima.example` → `.env` |
-| `make install` | `pnpm install` com o `.npmrc` do DS |
-| `make dev` | Ambiente local de desenvolvimento |
+| `make help` | Lista os alvos e a configuração em uso (padrão) |
+| `make install` | `pnpm install` com o token do DS (`NPM_TOKEN`) |
+| `make dev` | WAHA local (`docker compose up -d`) e `pnpm dev` |
 | `make check` | `pnpm typecheck`, `pnpm lint`, `pnpm test:unit` |
 | `make e2e` | `pnpm test:e2e` |
-| `make build TAG=…` | Constrói a imagem Ânima no servidor (DS via secret) |
-| `make up` / `down` / `restart` | Stack com os três compose files |
-| `make ps` / `logs [SERVICE=…]` | Estado e logs |
-| `make deploy TAG=…` | Backup → build → pull (worker/scheduler) → `up -d` → healthcheck → rollback se falhar |
+| `make ds-update` | Atualiza o DS, roda o gerador de tokens e `check` (major pede `ALLOW_MAJOR=1`) |
+| `make setup` | Pastas `/srv`, volumes ligados a elas, rede do NPM, `.env` e arquivo do token |
+| `make server-install` | Primeira instalação pelo kit: Supabase no servidor, banco, segredos e dono |
+| `make supabase-proxy` | Liga o gateway do Supabase à rede do NPM |
+| `make tag TAG=2026.11.1` | Cria e envia a tag de versão do fork |
+| `make build TAG=…` | Constrói `anima-hub:<TAG>` no servidor (DS via secret) |
+| `make deploy TAG=…` | Backup → build → banco → pull (worker/scheduler) → `up -d` → saúde → rollback se falhar |
 | `make update TAG=…` | Igual ao deploy, registrando a versão anterior |
-| `make rollback` | Volta para a imagem anterior registrada |
-| `make backup` / `restore` | Em `/srv/backups/deskcomm/` |
-| `make health` | Healthcheck do app e dos serviços |
+| `make rollback` | Volta o app para a imagem anterior registrada |
+| `make up` / `down` / `restart [SERVICE=…]` | Stack com os quatro compose files |
+| `make down-v` | Derruba e apaga os volumes não externos (os de `/srv` ficam) |
+| `make ps` / `logs [SERVICE=…]` / `config` | Estado, logs e o compose combinado |
+| `make shell [SERVICE=app]` | Shell no contêiner |
+| `make health` | `healthcheck.sh` do kit e a sonda pública (`/` 200, `/app` 307) |
+| `make backup` / `restore FILE=…` | Backup em `/srv/backups/deskcomm/`; restore num banco vazio |
 | `make brand-emails` | Reaplica a marca nos e-mails de acesso |
-| `make sync-upstream TAG=vX.Y.Z` | Cria `sync/vX.Y.Z` e faz o merge da tag |
-| `make ds-update` | Atualiza o DS e roda `check` |
-| `make shell [SERVICE=app]` | Shell no container |
+| `make sync-upstream TAG=vX.Y.Z` | Cria `sync/vX.Y.Z`, faz o merge da tag e atualiza `.anima-upstream` |
