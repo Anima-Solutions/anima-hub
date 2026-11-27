@@ -154,14 +154,37 @@ cmd_server_install() {
     gravar_env APP_IMAGE "${IMG_APP}:$(versao_base)"
   fi
 
+  # Com o Caddy do kit, o app chega ao Supabase pelo apelido DOMAIN na rede
+  # interna. Com o NPM, o Caddy não sobe e o apelido some: sem esta variável o
+  # servidor do app chama https://DOMAIN, que não resolve por dentro, e todo
+  # login vira `fetch failed`. O apelido supabase-envoy é do
+  # hostgator-setup-kit/supabase-single-server.override.yml. Gravar ANTES do
+  # instalador faz o app nascer já com ela (o install.sh preserva o que não é dele).
+  gravar_supabase_server_url
+
   step "Instalador do kit (Supabase no servidor + CRM)"
   REVERSE_PROXY=npm bash "$KIT_DIR/install-single-server.sh" --domain "$DOMAIN"
 
   # O instalador grava APP_NAME=DeskcommCRM; a semente Ânima volta.
   load_env .env
   gravar_env APP_NAME "Ânima Hub"
+  gravar_supabase_server_url
   cmd_supabase_proxy
+
+  # A organização real já nasce completa quando o arquivo está no lugar (seção 3.2 do README).
+  if [ -f "${ANIMA_SEED_FILE:-$RAIZ/.runtime/anima.seed.json}" ]; then
+    cmd_seeds_anima
+  else
+    c_ylw "• sem .runtime/anima.seed.json: a organização Ânima Hub fica para depois (make seeds-anima)."
+  fi
   c_grn "✓ instalação base pronta. Próximo passo: make deploy TAG=<versão do fork>"
+}
+
+SUPABASE_URL_INTERNA="http://supabase-envoy:8000"
+gravar_supabase_server_url() {
+  [ -n "${SUPABASE_SERVER_URL:-}" ] && return 0
+  gravar_env SUPABASE_SERVER_URL "$SUPABASE_URL_INTERNA"
+  c_grn "✓ SUPABASE_SERVER_URL=$SUPABASE_URL_INTERNA (o app fala com o Supabase pela rede interna)"
 }
 
 # O gateway do Supabase (envoy) atende /auth/v1, /rest/v1… Com o Caddy do kit
@@ -192,12 +215,20 @@ cmd_build() {
     [ "$(git rev-parse HEAD)" = "$(git rev-parse "$TAG^{commit}" 2>/dev/null)" ] \
       || die "O checkout não está na tag $TAG (git checkout $TAG, ou ALLOW_DIRTY=1 para construir o que está aqui)."
   fi
+  # O token vira header HTTP no pnpm: uma quebra de linha no fim do arquivo (o
+  # editor põe sozinho) reprova o build com ERR_INVALID_CHAR. O build lê uma
+  # cópia limpa, 600, apagada ao sair; o arquivo original não é tocado.
+  _SEGREDO_NPM="$(umask 077 && mktemp)"
+  trap 'rm -f "${_SEGREDO_NPM:-}"' EXIT
+  tr -d '\r\n\t ' < "$NPM_TOKEN_FILE" > "$_SEGREDO_NPM"
+  [ -s "$_SEGREDO_NPM" ] || die "O token em $NPM_TOKEN_FILE só tem espaços ou quebras de linha."
   step "Construindo ${ANIMA_IMAGE}:${TAG} (~10 min, ~8 GB de RAM livres)"
   DOCKER_BUILDKIT=1 docker build \
-    --secret "id=npm_token,src=$NPM_TOKEN_FILE" \
+    --secret "id=npm_token,src=$_SEGREDO_NPM" \
     --build-arg "APP_VERSION=$TAG" \
     --build-arg "NODE_HEAP_MB=$ANIMA_BUILD_HEAP_MB" \
     -t "${ANIMA_IMAGE}:${TAG}" .
+  rm -f "$_SEGREDO_NPM"
   c_grn "✓ imagem ${ANIMA_IMAGE}:${TAG}"
 }
 
@@ -243,6 +274,12 @@ cmd_health() {
   entrar
   local rc=0
   bash "$KIT_DIR/healthcheck.sh" || rc=1
+  # Só avisa: a variável é do operador, e o `make health` não regrava o .env.
+  if [ "${SINGLE_SERVER:-0}" = "1" ] && [ -z "${SUPABASE_SERVER_URL:-}" ]; then
+    c_red "⛔ SUPABASE_SERVER_URL vazio: com o NPM o app não alcança o Supabase (login com fetch failed)."
+    c_red "  Acrescente SUPABASE_SERVER_URL=$SUPABASE_URL_INTERNA ao .env e rode make up."
+    rc=1
+  fi
   [ "${SKIP_PUBLIC:-0}" = "1" ] || sonda_publica || rc=1
   return "$rc"
 }
@@ -376,6 +413,67 @@ cmd_brand_emails() {
   fi
 }
 
+# ── Seeds ────────────────────────────────────────────────────────────────────
+
+# Roda um seed de scripts/anima/seeds NO SERVIDOR. O servidor não tem Node nem node_modules,
+# e a imagem do app não leva scripts/anima (.dockerignore): roda num contêiner node
+# descartável, na rede interna do Supabase, que instala só o cliente do Supabase, o zod e o
+# tsx nas versões do package.json. Os seeds só aceitam o gateway interno (`supabase-envoy`),
+# que não existe fora desta rede. Segredos vão por variável herdada (-e NOME, sem valor):
+# não aparecem na linha de comando.
+#   rodar_seed <arquivo.ts> [opções do docker...] -- [argumentos do seed...]
+rodar_seed() {
+  local script="$1"; shift
+  local docker_extra=()
+  while [ $# -gt 0 ] && [ "$1" != "--" ]; do docker_extra+=("$1"); shift; done
+  [ "${1:-}" = "--" ] && shift
+  [ "${SINGLE_SERVER:-0}" = "1" ] || die "Os seeds no servidor pedem o Supabase no próprio servidor (SINGLE_SERVER=1)."
+  [ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ] || die "SUPABASE_SERVICE_ROLE_KEY vazio no .env."
+  [ -n "${SINGLE_SERVER_NETWORK:-}" ] || die "SINGLE_SERVER_NETWORK vazio no .env."
+  NEXT_PUBLIC_SUPABASE_URL="http://supabase-envoy:8000" \
+  NEXT_PUBLIC_APP_URL="https://$DOMAIN" \
+  docker run --rm --network "$SINGLE_SERVER_NETWORK" \
+    -e NEXT_PUBLIC_SUPABASE_URL -e NEXT_PUBLIC_APP_URL -e SUPABASE_SERVICE_ROLE_KEY \
+    -v "$RAIZ/scripts:/src/scripts:ro" -v "$RAIZ/package.json:/src/package.json:ro" \
+    "${docker_extra[@]}" \
+    node:22-alpine sh -euc '
+      script="$1"; shift
+      mkdir -p /w && cp -r /src/scripts /w/ && cd /w
+      versao() { node -p "const p=require(\"/src/package.json\");(p.dependencies||{})[\"$1\"]||p.devDependencies[\"$1\"]"; }
+      echo "{\"private\":true}" > package.json
+      npm install --no-audit --no-fund --loglevel=error \
+        "@supabase/supabase-js@$(versao @supabase/supabase-js)" "zod@$(versao zod)" "tsx@$(versao tsx)" >/dev/null
+      exec node_modules/.bin/tsx "scripts/anima/seeds/$script" "$@"
+    ' seed "$script" "$@"
+}
+
+# Organização de demonstração (scripts/anima/seeds/demo-agencia.ts).
+cmd_seeds_demo() {
+  entrar
+  local args=()
+  [ "${RECRIAR:-0}" = "1" ] && args+=(--recriar)
+  [ -n "${EMAIL:-}" ] && args+=("--email=$EMAIL")
+  [ -n "${IA_PROVEDOR:-}" ] && args+=("--provedor=$IA_PROVEDOR")
+  [ -n "${IA_MODELO:-}" ] && args+=("--modelo=$IA_MODELO")
+  step "Semeando a organização de demonstração em https://$DOMAIN"
+  # DEMONSTRADOR/SENHA (do make) vencem DEMO_DEMONSTRADOR/DEMO_SENHA (.env).
+  DEMO_DEMONSTRADOR="${DEMONSTRADOR:-${DEMO_DEMONSTRADOR:-}}" \
+  DEMO_SENHA="${SENHA:-${DEMO_SENHA:-}}" \
+  rodar_seed demo-agencia.ts -e DEMO_DEMONSTRADOR -e DEMO_SENHA -- "${args[@]}"
+}
+
+# Organização REAL da Ânima Hub (scripts/anima/seeds/anima-hub.ts). O arquivo com e-mails,
+# razão social e IA fica fora do git: ANIMA_SEED_FILE (padrão .runtime/anima.seed.json).
+cmd_seeds_anima() {
+  entrar
+  local arquivo="${ANIMA_SEED_FILE:-$RAIZ/.runtime/anima.seed.json}"
+  if [ ! -f "$arquivo" ]; then
+    die "Sem $arquivo. Copie scripts/anima/seeds/anima.seed.example.json para lá (chmod 600) e preencha."
+  fi
+  step "Aplicando a organização Ânima Hub em https://$DOMAIN"
+  rodar_seed anima-hub.ts -v "$arquivo:/run/anima.seed.json:ro" -- --config=/run/anima.seed.json
+}
+
 # ── Despacho ─────────────────────────────────────────────────────────────────
 
 main() {
@@ -399,6 +497,8 @@ main() {
     deploy|update) cmd_deploy ;;
     rollback) cmd_rollback ;;
     brand-emails) cmd_brand_emails ;;
+    seeds-demo) cmd_seeds_demo ;;
+    seeds-anima) cmd_seeds_anima ;;
     *) echo "uso: $0 <comando> (veja: make help)" >&2; exit 2 ;;
   esac
 }

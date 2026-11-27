@@ -43,8 +43,11 @@ while IFS= read -r caminho || [ -n "$caminho" ]; do
     *.test.ts | *.test.tsx) ;;
     .github/workflows/*.yml | .github/workflows/*.yaml) ;;
     .github/*.md | .github/ISSUE_TEMPLATE/*) ;;
+    # Fork Ânima: operação do servidor e seeds de demonstração (docs/anima/PATCHES.md).
+    scripts/anima/*) ;;
     # Daqui para baixo, só arquivo da RAIZ: qualquer outro caminho com `/` alcança.
     */*) echo sim; exit 0 ;;
+    Makefile | docker-compose.anima.yml | .env.anima.example | .anima-upstream) ;;
     *.md) ;;
     *) echo sim; exit 0 ;;
   esac

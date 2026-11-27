@@ -41,10 +41,13 @@ while IFS= read -r caminho || [ -n "$caminho" ]; do
       | .agent/* | .codex/* | .cursor/* | .opencode/* | .specs/* | .changes/* \
       | evidence/* | .superpowers/* | backups/*) ;;
     .github/*.yml | .github/*.yaml | .github/*.md) ;;
+    # Fork Ânima: operação do servidor e seeds, fora do contexto (.dockerignore).
+    scripts/anima | scripts/anima/*) ;;
     # Daqui para baixo, só arquivo da RAIZ: qualquer outro caminho com `/` alcança.
     */*) echo sim; exit 0 ;;
     # ↓ espelho do .dockerignore — os arquivos da raiz.
     .env | .env.* | playwright.config.ts | *.png | *.log | *.tsbuildinfo) ;;
+    Makefile | docker-compose.anima.yml | .anima-upstream) ;;
     *.md) ;;
     *) echo sim; exit 0 ;;
   esac

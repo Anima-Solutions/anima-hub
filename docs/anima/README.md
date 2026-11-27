@@ -73,6 +73,93 @@ make dev                            # docker compose up -d (WAHA) && pnpm dev
 Para o stack local completo (Supabase local, app, worker, scheduler, WAHA e Redis), rode uma vez
 `./ubuntu-local-installer.sh` e depois use `pnpm local:up | local:down | local:status | local:logs`.
 
+### 3.1 Dados de demonstração
+
+`make seeds-demo` cria a organização **Vértice Digital (demonstração)**, uma agência de marketing
+e tecnologia fictícia. É feita para **demo comercial**: cada tela abre preenchida.
+
+| Área | O que nasce |
+|---|---|
+| Equipe | 5 pessoas (gestora, 3 vendedores, 1 leitora). Todo administrador da plataforma entra como admin, e a primeira conta recebe parte da carteira, para as abas "Minhas" não abrirem vazias |
+| CRM | 120 contatos, ~115 oportunidades nos funis "Comercial" e "Renovação e upsell", com notas na linha do tempo, valores pontuais e mensais, ganhos e perdidos com motivo |
+| Inbox | 45 conversas no **chat do site** (~185 mensagens): passadas para uma pessoa (aba Fila), com a Lia (Automático), com a equipe, pendentes e resolvidas |
+| Agenda | 4 tipos de reunião, jornada seg–sex da equipe, ~50 reuniões passadas e futuras e 60 tarefas, algumas vencidas |
+| IA | A **Lia** publicada no chat do site, com a base de perguntas frequentes e casos ligados; o "Sol" em rascunho; 3 regras de automação e 1 follow-up desligados |
+
+**Não há WhatsApp na demo.** O canal é o chat do site, que é real: a Lia atende quem abrir o link
+impresso no fim do comando. O histórico entra como importado e não acorda nenhum agente nem
+automação. Para a Lia responder de verdade:
+
+1. Ligue o módulo **Chat no site** em `/admin/sistema` (uma vez, para a instalação). Sem ele o
+   link do chat responde 404.
+2. Na organização da demo, cadastre a chave de IA em **IA › Credenciais** e defina o teto mensal em
+   **IA › Uso de IA**. O par provedor/modelo da Lia precisa casar com a chave
+   (`IA_PROVEDOR=`/`IA_MODELO=`; padrão `anthropic`/`claude-sonnet-4-6`).
+3. Para a FAQ valer, uma chave de embedding (OpenAI, OpenRouter ou Google) e **Preparar tudo de
+   novo** em IA › Conhecimento.
+
+```bash
+make seeds-demo                     # cria; se já existe, para e avisa
+make seeds-demo RECRIAR=1           # apaga a organização de demonstração e cria de novo
+make seeds-demo EMAIL=voce@...      # dá acesso de admin a mais uma conta existente
+make seeds-demo DEMONSTRADOR=pessoa@empresa SENHA=sol-mar-42   # conta de quem apresenta
+make seeds-check                    # typecheck e testes dos seeds (o pnpm typecheck exclui scripts/)
+```
+
+**Conta do demonstrador.** `DEMONSTRADOR=` (ou `DEMO_DEMONSTRADOR` no `.env` do servidor) é a
+conta com que se apresenta a demo: admin **só** da organização de demonstração, dona de parte da
+carteira (a aba "Minhas" abre cheia) e sem troca de senha obrigatória. A senha é fácil de digitar
+de propósito — `SENHA=` (ou `DEMO_SENHA`), mínimo de 6 caracteres; sem ela, uma conta nova ganha
+uma senha no formato `mar-cafe-42`, mostrada uma vez no fim do seed, e uma conta existente
+mantém a sua. Conta que já é admin da plataforma ou membro de outra organização **nunca** tem a
+senha trocada (senha fácil ali abriria dados reais): o seed avisa e ela entra com a senha atual.
+O e-mail e a senha não ficam no repositório, que é público.
+
+Use para a demo um e-mail **diferente** da conta real da pessoa — na Ânima, o `+demo`
+(`nome+demo@animahub.ai` chega na mesma caixa). Mesma conta nas duas organizações faria a senha
+fácil da demo abrir os dados reais; o seed da Ânima Hub (seção 3.2) recusa incluir uma conta que
+só existe na demonstração.
+
+`RECRIAR=1` apaga tudo da organização de demonstração, **inclusive a chave de IA** cadastrada nela.
+
+**Onde roda.** Na sua máquina, contra o Supabase local (loopback ou IP privado). **No servidor**,
+o mesmo `make seeds-demo` roda num contêiner `node:22-alpine` descartável, na rede interna do
+Supabase (o servidor não tem Node e a imagem do app não leva `scripts/anima/`). O script recusa,
+sem opção de forçar, qualquer outro destino: da sua máquina, a produção nunca é alvo. Os dados são
+fixos, e um PR que só mexe em `scripts/anima/seeds/` pula o e2e e o build da imagem.
+
+### 3.2 Organização Ânima Hub (seed real)
+
+`make seeds-anima` deixa a organização **de verdade** pronta: identidade (nome, razão social,
+CNPJ, e-mail do encarregado de dados — que aparece no PDF de LGPD —, fuso e idioma), a equipe
+com papel, admin da plataforma e jornada de atendimento, e a IA (provedor e modelo padrão, teto
+mensal em "avisar", e opcionalmente agentes em **rascunho** e perguntas frequentes).
+
+Os dados vêm de um JSON **fora do git**, porque o repositório é público:
+
+```bash
+mkdir -p .runtime && cp scripts/anima/seeds/anima.seed.example.json .runtime/anima.seed.json
+chmod 600 .runtime/anima.seed.json   # preencha; o exemplo (e-mails @example.com) é recusado
+make seeds-anima                     # no servidor; local: make seeds-anima CONFIG=<arquivo>
+```
+
+Com o arquivo no lugar **antes** do `make server-install`, a instalação já termina com a
+organização pronta. O caminho é `ANIMA_SEED_FILE` no `.env`.
+
+Regras, para rodar quantas vezes precisar sem estragar nada:
+
+- **Qual organização.** A do `organizacao.slug`; se não existe, a **única** da instalação (a
+  que o `install.sh` criou com o dono) é adotada e renomeada; nenhuma, cria; mais de uma sem o
+  slug, para e pede o slug.
+- **Contas novas** nascem com senha provisória forte, mostrada **uma vez** no fim, e troca
+  obrigatória no primeiro acesso. **Contas existentes** entram com a senha que já têm — o seed
+  nunca vê nem muda senha. Conta que só existe na demonstração é recusada.
+- **O arquivo manda** na identidade da organização, no papel de cada pessoa e no par
+  provedor/modelo. Jornada, orçamento, agentes e perguntas só são **criados quando faltam**: o
+  que alguém mudou pela tela fica.
+- **Nunca revoga nem reativa**: quem saiu da equipe pela tela continua fora.
+- **Chave de IA** continua só pela tela (IA › Credenciais).
+
 O `.npmrc` do projeto tem somente:
 
 ```ini
@@ -125,7 +212,7 @@ cd /srv/stacks/deskcomm
 sudo mkdir -p /srv/appdata/deskcomm /srv/storage/deskcomm /srv/backups/deskcomm
 sudo chown -R "$USER" /srv/appdata/deskcomm /srv/storage/deskcomm /srv/backups/deskcomm
 make setup
-#    edite o .env: DOMAIN, ACME_EMAIL, PROXY_NETWORK_APP_IP (livre na sub-rede que o setup mostra),
+#    edite o .env: DOMAIN, PROXY_NETWORK_APP_IP (livre na sub-rede que o setup mostra),
 #    RESEND_API_KEY, RESEND_FROM_EMAIL
 #    cole o PAT (read:packages) em .runtime/npm-token
 
@@ -138,6 +225,10 @@ make server-install
 # 5. Versão Ânima: build no servidor, banco, troca da imagem, saúde
 make deploy TAG=2026.11.1
 ```
+
+O `make server-install` grava `SUPABASE_SERVER_URL=http://supabase-envoy:8000` no `.env` quando
+ela está vazia. Com o NPM o Caddy do kit não sobe, e sem ela o app procura o Supabase pelo domínio
+público, que não resolve por dentro do contêiner (`fetch failed` no login).
 
 O `make server-install` sobe primeiro as **imagens oficiais** da versão de `.anima-upstream`: o
 `install.sh` do kit grava a mesma tag para app, worker e scheduler, e só essas três existem
@@ -218,6 +309,11 @@ docker build --secret id=npm_token,src=.runtime/npm-token \
 instalam o DS com o `GITHUB_TOKEN` do workflow, sem PAT. Para funcionar, uma vez: pacote
 `@anima-solutions/design-system` › *Package settings* › *Manage Actions access* › adicionar
 `anima-hub` com papel *Read*. Os workflows pedem `packages: read` (ver `PATCHES.md`).
+
+**PR só de operação ou de seeds é curto.** `Makefile`, `docker-compose.anima.yml`,
+`.env.anima.example`, `.anima-upstream` e `scripts/anima/**` não mudam o produto: um PR que só
+mexe neles pula o e2e e o build da imagem (os jobs terminam verdes, com o motivo no log) e roda
+só o `verify`, ~12 min. Basta um arquivo do produto no PR para tudo voltar a rodar.
 
 **Workflows do upstream desabilitados no fork** (GitHub › Actions › *Disable workflow*, sem mudar
 arquivo): `publish-image.yml` (publica imagens do upstream; o fork não usa registro),
@@ -360,6 +456,8 @@ A marca mora **no banco**, não na imagem. O `.env` é só a semente:
 | Domínio responde `502` depois de um deploy | `PROXY_NETWORK_APP_IP` diferente do IP do Proxy Host | Alinhar o `.env` com o Proxy Host do NPM |
 | `external volume "deskcomm_waha-data" not found` | `make setup` não rodou | `make setup` (cria os volumes ligados às pastas) |
 | Serviços não sobem com bind em `/srv/...` | Pasta ausente ou dono errado | `make setup`; conferir `ls -ld /srv/appdata/deskcomm/*` |
+| Login não entra e o log do app mostra `TypeError: fetch failed` | `SUPABASE_SERVER_URL` ausente no `.env` (instalação anterior a esta correção) | Acrescentar `SUPABASE_SERVER_URL=http://supabase-envoy:8000` e `make up`. O `make health` acusa |
+| Build falha com `ERR_INVALID_CHAR` no header `authorization` | Quebra de linha ou espaço no arquivo do token | O `make build` já limpa; em versão antiga, regravar `.runtime/npm-token` numa linha só |
 | `/auth/v1` responde `502`, login não entra | Gateway do Supabase fora da rede do NPM (Supabase recriado) | `make supabase-proxy` |
 | `make deploy` recusa "mudanças não commitadas" | Arquivo do repositório editado no servidor | `git status`; o servidor não guarda mudança de código |
 | Depois de um update o app perdeu a cara Ânima | Rodaram o `update.sh` do upstream | `make update TAG=<versão>` ou `make rollback` (seção 5) |
@@ -413,6 +511,9 @@ os scripts do `pnpm` (desenvolvimento). Os alvos destrutivos pedem confirmação
 | `make dev` | WAHA local (`docker compose up -d`) e `pnpm dev` |
 | `make check` | `pnpm typecheck`, `pnpm lint`, `pnpm test:unit` |
 | `make e2e` | `pnpm test:e2e` |
+| `make seeds-anima` | Organização real Ânima Hub a partir de `.runtime/anima.seed.json` (seção 3.2) |
+| `make seeds-demo` | Organização de demonstração, local ou no servidor (`DEMONSTRADOR=`, `SENHA=`, `RECRIAR=1`, `EMAIL=`, `IA_PROVEDOR=`, `IA_MODELO=`; seção 3.1) |
+| `make seeds-check` | Typecheck e testes dos seeds de demonstração |
 | `make ds-update` | Atualiza o DS, roda o gerador de tokens e `check` (major pede `ALLOW_MAJOR=1`) |
 | `make setup` | Pastas `/srv`, volumes ligados a elas, rede do NPM, `.env` e arquivo do token |
 | `make server-install` | Primeira instalação pelo kit: Supabase no servidor, banco, segredos e dono |

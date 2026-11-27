@@ -44,7 +44,7 @@ help: ## Lista os alvos
 
 # ── Desenvolvimento ──────────────────────────────────────────────────────────
 
-.PHONY: install dev check e2e ds-update
+.PHONY: install dev check e2e ds-update seeds-check seeds-demo seeds-anima
 install: ## Instala as dependências (pnpm, com o .npmrc do design system)
 	@[ -n "$${NPM_TOKEN:-$${NODE_AUTH_TOKEN:-}}" ] || { echo "✖ defina NPM_TOKEN (PAT com read:packages)"; exit 1; }
 	NPM_TOKEN="$${NPM_TOKEN:-$${NODE_AUTH_TOKEN:-}}" pnpm install
@@ -60,6 +60,24 @@ check: ## Gates: typecheck, lint e testes unitários
 
 e2e: ## Testes e2e (Playwright; precisa do app no ar)
 	pnpm test:e2e
+
+seeds-check: ## Typecheck e testes dos seeds (demonstração e Ânima Hub) (o pnpm typecheck não cobre scripts/)
+	pnpm exec tsc -p scripts/anima/seeds/tsconfig.json
+	pnpm exec vitest run scripts/anima/seeds
+
+seeds-demo: ## Organização de demonstração (local ou no servidor; DEMONSTRADOR=, SENHA=, RECRIAR=1, EMAIL=, IA_PROVEDOR=, IA_MODELO=)
+	@if [ -f .env ] && grep -q '^SINGLE_SERVER=1' .env; then \
+	  DEMONSTRADOR="$(DEMONSTRADOR)" SENHA="$(SENHA)" RECRIAR="$(RECRIAR)" EMAIL="$(EMAIL)" IA_PROVEDOR="$(IA_PROVEDOR)" IA_MODELO="$(IA_MODELO)" bash scripts/anima/servidor.sh seeds-demo; \
+	else \
+	  DEMO_DEMONSTRADOR="$(DEMONSTRADOR)" DEMO_SENHA="$(SENHA)" pnpm exec tsx scripts/anima/seeds/demo-agencia.ts $(if $(RECRIAR),--recriar) $(if $(EMAIL),--email=$(EMAIL)) $(if $(IA_PROVEDOR),--provedor=$(IA_PROVEDOR)) $(if $(IA_MODELO),--modelo=$(IA_MODELO)); \
+	fi
+
+seeds-anima: ## Organização real Ânima Hub a partir de .runtime/anima.seed.json (local: CONFIG=<arquivo>)
+	@if [ -f .env ] && grep -q '^SINGLE_SERVER=1' .env; then \
+	  bash scripts/anima/servidor.sh seeds-anima; \
+	else \
+	  pnpm exec tsx scripts/anima/seeds/anima-hub.ts --config="$(or $(CONFIG),.runtime/anima.seed.json)" $(if $(CRIAR),--criar); \
+	fi
 
 ds-update: ## Atualiza o design system para a última versão e roda check
 	@atual="$$(node -p "require('./package.json').dependencies['@anima-solutions/design-system']")"; \

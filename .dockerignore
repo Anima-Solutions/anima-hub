@@ -35,3 +35,11 @@ evidence
 # backup.sh os grava ao lado do código na VPS, e o `COPY . .` os levaria para
 # dentro da imagem.
 backups
+
+# Fork Ânima: operação do servidor e seeds de demonstração. Nada disto roda na
+# imagem; fora do contexto, um PR só destes arquivos não constrói à toa
+# (scripts/pr-mexe-na-imagem.sh espelha estas linhas).
+scripts/anima
+Makefile
+docker-compose.anima.yml
+.anima-upstream
