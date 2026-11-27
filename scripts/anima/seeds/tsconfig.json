@@ -1,0 +1,8 @@
+{
+  // Fork Ânima — o `pnpm typecheck` exclui scripts/**; os seeds da demo têm o próprio
+  // (make seeds-check). Inclui os helpers do upstream que eles importam.
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false, "types": ["node"] },
+  "include": ["./*.ts"],
+  "exclude": []
+}

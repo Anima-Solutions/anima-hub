@@ -44,7 +44,7 @@ help: ## Lista os alvos
 
 # ── Desenvolvimento ──────────────────────────────────────────────────────────
 
-.PHONY: install dev check e2e ds-update
+.PHONY: install dev check e2e ds-update seeds-check seeds-demo
 install: ## Instala as dependências (pnpm, com o .npmrc do design system)
 	@[ -n "$${NPM_TOKEN:-$${NODE_AUTH_TOKEN:-}}" ] || { echo "✖ defina NPM_TOKEN (PAT com read:packages)"; exit 1; }
 	NPM_TOKEN="$${NPM_TOKEN:-$${NODE_AUTH_TOKEN:-}}" pnpm install
@@ -60,6 +60,13 @@ check: ## Gates: typecheck, lint e testes unitários
 
 e2e: ## Testes e2e (Playwright; precisa do app no ar)
 	pnpm test:e2e
+
+seeds-check: ## Typecheck e testes dos seeds de demonstração (o pnpm typecheck não cobre scripts/)
+	pnpm exec tsc -p scripts/anima/seeds/tsconfig.json
+	pnpm exec vitest run scripts/anima/seeds
+
+seeds-demo: ## Semeia a agência de demonstração no Supabase LOCAL (RECRIAR=1 refaz; EMAIL= dá acesso)
+	pnpm exec tsx scripts/anima/seeds/demo-agencia.ts $(if $(RECRIAR),--recriar) $(if $(EMAIL),--email=$(EMAIL))
 
 ds-update: ## Atualiza o design system para a última versão e roda check
 	@atual="$$(node -p "require('./package.json').dependencies['@anima-solutions/design-system']")"; \

@@ -73,6 +73,35 @@ make dev                            # docker compose up -d (WAHA) && pnpm dev
 Para o stack local completo (Supabase local, app, worker, scheduler, WAHA e Redis), rode uma vez
 `./ubuntu-local-installer.sh` e depois use `pnpm local:up | local:down | local:status | local:logs`.
 
+### 3.1 Dados de demonstração
+
+Com o Supabase local no ar, `make seeds-demo` cria a organização **Vértice Digital
+(demonstração)**, uma agência de marketing e tecnologia fictícia, com volume para demo e QA visual:
+
+| Área | O que nasce |
+|---|---|
+| Equipe | 5 pessoas (gestora, 3 vendedores, 1 leitora). Todo administrador da plataforma entra como admin |
+| CRM | 120 contatos, ~115 oportunidades nos funis "Comercial" e "Renovação e upsell", com notas na linha do tempo, valores pontuais e mensais, ganhos e perdidos com motivo |
+| Inbox | 45 conversas de WhatsApp (~190 mensagens) abertas, pendentes e resolvidas |
+| Agenda | 4 tipos de reunião e ~50 reuniões passadas e futuras (realizadas, faltas, canceladas, confirmadas) e 60 tarefas, algumas vencidas |
+| IA | 2 agentes em rascunho, base de perguntas frequentes, 3 regras de automação e 1 follow-up |
+
+**Nada age sozinho.** O número de WhatsApp nasce parado, os agentes, as regras e o follow-up nascem
+desligados, e os tipos de reunião não mandam lembrete. As mensagens entram como histórico
+importado, então nenhum agente nem automação responde a elas.
+
+```bash
+make seeds-demo                     # cria; se já existe, para e avisa
+make seeds-demo RECRIAR=1           # apaga a organização de demonstração e cria de novo
+make seeds-demo EMAIL=voce@...      # dá acesso de admin a mais uma conta existente
+make seeds-check                    # typecheck e testes dos seeds (o pnpm typecheck exclui scripts/)
+```
+
+O script recusa, sem opção de forçar, um Supabase que não seja desta máquina ou da rede local
+(loopback ou IP privado). Produção nunca é alvo. Depois de rodar, troque de organização no app.
+Os dados são fixos: rodar de novo com `RECRIAR=1` gera as mesmas pessoas e os mesmos negócios. Os
+arquivos ficam em `scripts/anima/seeds/`, e um PR que só mexe neles pula o e2e e o build da imagem.
+
 O `.npmrc` do projeto tem somente:
 
 ```ini
@@ -424,6 +453,8 @@ os scripts do `pnpm` (desenvolvimento). Os alvos destrutivos pedem confirmação
 | `make dev` | WAHA local (`docker compose up -d`) e `pnpm dev` |
 | `make check` | `pnpm typecheck`, `pnpm lint`, `pnpm test:unit` |
 | `make e2e` | `pnpm test:e2e` |
+| `make seeds-demo` | Agência de demonstração no Supabase local (`RECRIAR=1`, `EMAIL=`; seção 3.1) |
+| `make seeds-check` | Typecheck e testes dos seeds de demonstração |
 | `make ds-update` | Atualiza o DS, roda o gerador de tokens e `check` (major pede `ALLOW_MAJOR=1`) |
 | `make setup` | Pastas `/srv`, volumes ligados a elas, rede do NPM, `.env` e arquivo do token |
 | `make server-install` | Primeira instalação pelo kit: Supabase no servidor, banco, segredos e dono |
