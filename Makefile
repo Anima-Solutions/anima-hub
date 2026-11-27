@@ -65,11 +65,11 @@ seeds-check: ## Typecheck e testes dos seeds de demonstração (o pnpm typecheck
 	pnpm exec tsc -p scripts/anima/seeds/tsconfig.json
 	pnpm exec vitest run scripts/anima/seeds
 
-seeds-demo: ## Organização de demonstração (local ou no servidor; RECRIAR=1, EMAIL=, IA_PROVEDOR=, IA_MODELO=)
+seeds-demo: ## Organização de demonstração (local ou no servidor; DEMONSTRADOR=, SENHA=, RECRIAR=1, EMAIL=, IA_PROVEDOR=, IA_MODELO=)
 	@if [ -f .env ] && grep -q '^SINGLE_SERVER=1' .env; then \
-	  RECRIAR="$(RECRIAR)" EMAIL="$(EMAIL)" IA_PROVEDOR="$(IA_PROVEDOR)" IA_MODELO="$(IA_MODELO)" bash scripts/anima/servidor.sh seeds-demo; \
+	  DEMONSTRADOR="$(DEMONSTRADOR)" SENHA="$(SENHA)" RECRIAR="$(RECRIAR)" EMAIL="$(EMAIL)" IA_PROVEDOR="$(IA_PROVEDOR)" IA_MODELO="$(IA_MODELO)" bash scripts/anima/servidor.sh seeds-demo; \
 	else \
-	  pnpm exec tsx scripts/anima/seeds/demo-agencia.ts $(if $(RECRIAR),--recriar) $(if $(EMAIL),--email=$(EMAIL)) $(if $(IA_PROVEDOR),--provedor=$(IA_PROVEDOR)) $(if $(IA_MODELO),--modelo=$(IA_MODELO)); \
+	  DEMO_DEMONSTRADOR="$(DEMONSTRADOR)" DEMO_SENHA="$(SENHA)" pnpm exec tsx scripts/anima/seeds/demo-agencia.ts $(if $(RECRIAR),--recriar) $(if $(EMAIL),--email=$(EMAIL)) $(if $(IA_PROVEDOR),--provedor=$(IA_PROVEDOR)) $(if $(IA_MODELO),--modelo=$(IA_MODELO)); \
 	fi
 
 ds-update: ## Atualiza o design system para a última versão e roda check

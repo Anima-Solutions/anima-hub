@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { DOMINIO, pessoas, ROTEIROS, sorteador } from "./dados-agencia";
-import { destinoDaDemoEhLocal, planejarOportunidades } from "./demo-agencia";
+import { destinoDaDemoEhLocal, planejarOportunidades, senhaFacil } from "./demo-agencia";
 
 /**
  * Fork Ânima — o seed de demonstração (`make seeds-demo`).
@@ -82,6 +82,17 @@ describe("dados da agência", () => {
       "suporte",
     ]) {
       expect(ROTEIROS[m]?.length ?? 0).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("senha do demonstrador", () => {
+  it("é fácil de digitar: minúsculas, hífens e dois dígitos, com o mínimo do Supabase Auth", () => {
+    const r = sorteador(7);
+    for (let i = 0; i < 200; i++) {
+      const senha = senhaFacil(r.proximo);
+      expect(senha).toMatch(/^[a-z]{3,4}-[a-z]{3,4}-[1-9][0-9]$/);
+      expect(senha.length).toBeGreaterThanOrEqual(6);
     }
   });
 });

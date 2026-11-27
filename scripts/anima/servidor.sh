@@ -424,11 +424,15 @@ cmd_seeds_demo() {
   [ -n "${IA_PROVEDOR:-}" ] && args+=("--provedor=$IA_PROVEDOR")
   [ -n "${IA_MODELO:-}" ] && args+=("--modelo=$IA_MODELO")
   step "Semeando a organização de demonstração em https://$DOMAIN"
-  # A chave vai por variável herdada (-e NOME, sem valor): não aparece na linha de comando.
+  # A chave e a senha vão por variável herdada (-e NOME, sem valor): não aparecem na
+  # linha de comando. DEMONSTRADOR/SENHA (do make) vencem DEMO_DEMONSTRADOR/DEMO_SENHA (.env).
+  DEMO_DEMONSTRADOR="${DEMONSTRADOR:-${DEMO_DEMONSTRADOR:-}}" \
+  DEMO_SENHA="${SENHA:-${DEMO_SENHA:-}}" \
   NEXT_PUBLIC_SUPABASE_URL="http://supabase-envoy:8000" \
   NEXT_PUBLIC_APP_URL="https://$DOMAIN" \
   docker run --rm --network "$SINGLE_SERVER_NETWORK" \
     -e NEXT_PUBLIC_SUPABASE_URL -e NEXT_PUBLIC_APP_URL -e SUPABASE_SERVICE_ROLE_KEY \
+    -e DEMO_DEMONSTRADOR -e DEMO_SENHA \
     -v "$RAIZ/scripts:/src/scripts:ro" -v "$RAIZ/package.json:/src/package.json:ro" \
     node:22-alpine sh -euc '
       mkdir -p /w && cp -r /src/scripts /w/ && cd /w

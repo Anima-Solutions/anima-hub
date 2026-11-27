@@ -193,10 +193,84 @@ async function idPorEmail(db: SupabaseClient, email: string): Promise<string | n
   return null;
 }
 
+/** Senha fácil de digitar numa demo: duas palavras curtas e dois dígitos (ex.: `mar-cafe-42`). */
+export function senhaFacil(sorteio: () => number = Math.random): string {
+  const palavras = ["sol", "mar", "lua", "rio", "cafe", "mel", "pao", "ceu", "flor", "bola"];
+  const um = () => palavras[Math.floor(sorteio() * palavras.length)]!;
+  return `${um()}-${um()}-${String(10 + Math.floor(sorteio() * 90))}`;
+}
+
+export interface Demonstrador {
+  id: string;
+  email: string;
+  /** A senha definida NESTA rodada, para mostrar uma vez; `null` = a conta manteve a dela. */
+  senhaNova: string | null;
+  aviso: string | null;
+}
+
+/**
+ * A conta de quem APRESENTA a demo: entra só nesta organização, como admin, e é dona de parte
+ * da carteira. A senha é fácil de digitar porque a conta não abre nada além da demo — e por
+ * isso mesmo o seed NUNCA mexe na senha de uma conta que tem outra vida na instalação
+ * (administrador da plataforma ou membro de outra organização): pôr senha fácil ali abriria
+ * dados reais. Nesse caso a conta entra na demo com a senha que já tem.
+ *
+ * Nem o e-mail nem a senha moram no repositório (ele é público): vêm de `--demonstrador=` e
+ * `--senha=` (no servidor, de DEMO_DEMONSTRADOR e DEMO_SENHA no .env). Sem `--senha`, uma conta
+ * nova ganha senha gerada, mostrada uma vez; uma conta existente mantém a dela.
+ */
+async function garantirDemonstrador(
+  db: SupabaseClient,
+  orgId: string,
+  email: string,
+  senha: string | null,
+): Promise<Demonstrador> {
+  const id = await idPorEmail(db, email);
+  if (!id) {
+    const senhaNova = senha ?? senhaFacil();
+    const nome = email.split("@")[0]!.replace(/[._-]+/g, " ");
+    const { data, error } = await db.auth.admin.createUser({
+      email,
+      password: senhaNova,
+      email_confirm: true,
+      user_metadata: { full_name: nome.charAt(0).toUpperCase() + nome.slice(1) },
+    });
+    if (error || !data.user) throw new Error(`criar ${email}: ${error?.message}`);
+    return { id: data.user.id, email, senhaNova, aviso: null };
+  }
+
+  const [{ data: admin }, { data: outras }] = await Promise.all([
+    db.from("platform_admins").select("user_id").eq("user_id", id).maybeSingle(),
+    db
+      .from("user_organizations")
+      .select("organization_id")
+      .eq("user_id", id)
+      .neq("organization_id", orgId)
+      .is("revoked_at", null)
+      .limit(1),
+  ]);
+  const temOutraVida = admin !== null || (outras ?? []).length > 0;
+  if (temOutraVida) {
+    return {
+      id,
+      email,
+      senhaNova: null,
+      aviso:
+        `${email} também é administrador da plataforma ou membro de outra organização: ` +
+        "a senha dela NÃO foi trocada (senha fácil ali abriria dados reais). Entra com a senha atual.",
+    };
+  }
+  if (!senha) return { id, email, senhaNova: null, aviso: null };
+  const { error } = await db.auth.admin.updateUserById(id, { password: senha });
+  if (error) throw new Error(`senha de ${email}: ${error.message}`);
+  return { id, email, senhaNova: senha, aviso: null };
+}
+
 async function semearEquipe(
   db: SupabaseClient,
   orgId: string,
   emailExtra: string | null,
+  demonstrador: Demonstrador | null,
 ): Promise<{ equipe: Record<string, string>; acesso: string[] }> {
   const equipe: Record<string, string> = {};
   const vinculos: Array<{ user_id: string; role: string }> = [];
@@ -205,8 +279,10 @@ async function semearEquipe(
     vinculos.push({ user_id: equipe[m.chave]!, role: m.papel });
   }
 
+  // O demonstrador vem PRIMEIRO: é ele quem recebe a carteira ("Minhas").
   const { data: admins } = await db.from("platform_admins").select("user_id");
-  const acesso = new Set(((admins ?? []) as { user_id: string }[]).map((a) => a.user_id));
+  const acesso = new Set<string>(demonstrador ? [demonstrador.id] : []);
+  for (const a of (admins ?? []) as { user_id: string }[]) acesso.add(a.user_id);
   if (emailExtra) {
     const id = await idPorEmail(db, emailExtra);
     if (!id) throw new Error(`--email: nenhuma conta com ${emailExtra}`);
@@ -219,7 +295,13 @@ async function semearEquipe(
   await inserir(
     db,
     "user_organizations",
-    vinculos.map((v) => ({ ...v, organization_id: orgId, accepted_at: new Date().toISOString() })),
+    vinculos.map((v) => ({
+      ...v,
+      organization_id: orgId,
+      accepted_at: new Date().toISOString(),
+      // A senha da demo é escolhida de propósito: sem a troca obrigatória no primeiro acesso.
+      senha_provisoria: false,
+    })),
   );
   // Jornada de atendimento (seg–sex, 9h–12h e 13h–18h): sem ela a Agenda não calcula
   // horários livres e mostra erro para cada tipo de reunião.
@@ -862,7 +944,24 @@ async function main(): Promise<void> {
   });
 
   const orgId = await prepararOrganizacao(db, recriar);
-  const { equipe, acesso } = await semearEquipe(db, orgId, emailExtra);
+  // Por variável de ambiente também: no servidor a senha não passa pela linha de comando.
+  const emailDoDemonstrador = opcao("demonstrador") ?? (process.env.DEMO_DEMONSTRADOR || null);
+  const senhaDoDemonstrador = opcao("senha") ?? (process.env.DEMO_SENHA || null);
+  if (senhaDoDemonstrador !== null && senhaDoDemonstrador.length < 6) {
+    console.error(
+      "A senha do demonstrador precisa de ao menos 6 caracteres (regra do Supabase Auth).",
+    );
+    process.exit(2);
+  }
+  const demonstrador = emailDoDemonstrador
+    ? await garantirDemonstrador(
+        db,
+        orgId,
+        emailDoDemonstrador.trim().toLowerCase(),
+        senhaDoDemonstrador,
+      )
+    : null;
+  const { equipe, acesso } = await semearEquipe(db, orgId, emailExtra, demonstrador);
   const funis = await semearFunis(db, orgId);
 
   const gente = pessoas(sorteador(2026), 120);
@@ -898,7 +997,7 @@ async function main(): Promise<void> {
   console.info(
     [
       `\n✅ ${ORGANIZACAO.nome}`,
-      `   equipe: ${EQUIPE.length} pessoas · acesso de admin para ${acesso.length} conta(s) da plataforma`,
+      `   equipe: ${EQUIPE.length} pessoas · acesso de admin para ${acesso.length} conta(s) de fora da equipe fictícia`,
       `   CRM: ${contatos.length} contatos · ${leadIds.length} oportunidades em ${FUNIS.length} funis · ${atividades} notas`,
       `   Inbox: ${conversas.conversas} conversas · ${conversas.mensagens} mensagens, no chat do site`,
       `   Agenda: ${reunioes} reuniões · ${tarefas} tarefas`,
@@ -910,6 +1009,15 @@ async function main(): Promise<void> {
         : "   ⚠ Módulo do chat no site DESLIGADO na instalação: ligue em /admin/sistema, senão o link responde 404.",
       "   Para a Lia responder: chave de IA em IA › Credenciais (e teto em IA › Uso de IA).",
       "   Para a FAQ valer: chave de embedding e “Preparar tudo de novo” em IA › Conhecimento.",
+      ...(demonstrador
+        ? [
+            `   Demonstrador: ${demonstrador.email} · ` +
+              (demonstrador.senhaNova
+                ? `senha: ${demonstrador.senhaNova}  (mostrada só agora; anote)`
+                : "senha mantida"),
+            ...(demonstrador.aviso ? [`   ⚠ ${demonstrador.aviso}`] : []),
+          ]
+        : []),
       `   Troque de organização no app para "${ORGANIZACAO.nome}".`,
     ].join("\n"),
   );

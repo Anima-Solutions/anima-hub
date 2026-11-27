@@ -102,8 +102,18 @@ automação. Para a Lia responder de verdade:
 make seeds-demo                     # cria; se já existe, para e avisa
 make seeds-demo RECRIAR=1           # apaga a organização de demonstração e cria de novo
 make seeds-demo EMAIL=voce@...      # dá acesso de admin a mais uma conta existente
+make seeds-demo DEMONSTRADOR=pessoa@empresa SENHA=sol-mar-42   # conta de quem apresenta
 make seeds-check                    # typecheck e testes dos seeds (o pnpm typecheck exclui scripts/)
 ```
+
+**Conta do demonstrador.** `DEMONSTRADOR=` (ou `DEMO_DEMONSTRADOR` no `.env` do servidor) é a
+conta com que se apresenta a demo: admin **só** da organização de demonstração, dona de parte da
+carteira (a aba "Minhas" abre cheia) e sem troca de senha obrigatória. A senha é fácil de digitar
+de propósito — `SENHA=` (ou `DEMO_SENHA`), mínimo de 6 caracteres; sem ela, uma conta nova ganha
+uma senha no formato `mar-cafe-42`, mostrada uma vez no fim do seed, e uma conta existente
+mantém a sua. Conta que já é admin da plataforma ou membro de outra organização **nunca** tem a
+senha trocada (senha fácil ali abriria dados reais): o seed avisa e ela entra com a senha atual.
+O e-mail e a senha não ficam no repositório, que é público.
 
 `RECRIAR=1` apaga tudo da organização de demonstração, **inclusive a chave de IA** cadastrada nela.
 
@@ -464,7 +474,7 @@ os scripts do `pnpm` (desenvolvimento). Os alvos destrutivos pedem confirmação
 | `make dev` | WAHA local (`docker compose up -d`) e `pnpm dev` |
 | `make check` | `pnpm typecheck`, `pnpm lint`, `pnpm test:unit` |
 | `make e2e` | `pnpm test:e2e` |
-| `make seeds-demo` | Organização de demonstração, local ou no servidor (`RECRIAR=1`, `EMAIL=`, `IA_PROVEDOR=`, `IA_MODELO=`; seção 3.1) |
+| `make seeds-demo` | Organização de demonstração, local ou no servidor (`DEMONSTRADOR=`, `SENHA=`, `RECRIAR=1`, `EMAIL=`, `IA_PROVEDOR=`, `IA_MODELO=`; seção 3.1) |
 | `make seeds-check` | Typecheck e testes dos seeds de demonstração |
 | `make ds-update` | Atualiza o DS, roda o gerador de tokens e `check` (major pede `ALLOW_MAJOR=1`) |
 | `make setup` | Pastas `/srv`, volumes ligados a elas, rede do NPM, `.env` e arquivo do token |
