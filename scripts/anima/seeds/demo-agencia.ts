@@ -2,35 +2,42 @@
  * Fork Ânima — seed de DEMONSTRAÇÃO com volume: uma agência de serviços inteira.
  *
  * Cria a organização "Vértice Digital (demonstração)" com equipe, dois funis, ~120 contatos,
- * ~110 oportunidades, histórico na linha do tempo, ~45 conversas de WhatsApp, agenda com
+ * ~110 oportunidades, histórico na linha do tempo, ~45 conversas no CHAT DO SITE, agenda com
  * reuniões passadas e futuras, tarefas, dois agentes de IA, base de conhecimento, regras de
- * automação e um fluxo de follow-up. Serve para demo comercial e QA visual em ambiente local.
+ * automação e um fluxo de follow-up. É feita para demo comercial: cada tela abre preenchida.
  *
- * ─── O que ele NUNCA faz ────────────────────────────────────────────────────
+ * ─── O canal e a IA ─────────────────────────────────────────────────────────
  *
- * Nada aqui age sozinho. O número de WhatsApp aparece conectado (`WORKING`), mas a sessão não
- * existe no WAHA, então nada sai por ele; os agentes, as regras e o follow-up nascem DESLIGADOS; os tipos de reunião não mandam
- * lembrete; as mensagens são marcadas `historico_importado` (o gatilho não emite
- * `message.received`) e os pedidos de roteamento que as conversas geram são dados por
- * concluídos no fim. Ligar qualquer coisa é decisão de quem usa a demo, pela tela.
+ * Não há WhatsApp na demo: o canal é o chat do site (`provider = 'webchat'`), criado como a
+ * tela cria. A Lia nasce PUBLICADA nele e atende visitantes de verdade, desde que a instalação
+ * tenha o módulo ligado (/admin/sistema) e a organização tenha chave de IA (IA › Credenciais).
+ * O histórico não acorda ninguém: as mensagens são `historico_importado` (o gatilho não emite
+ * `message.received`) e os pedidos de roteamento das conversas sem dono são dados por
+ * concluídos. Os outros agentes, as regras e o follow-up nascem DESLIGADOS, e os tipos de
+ * reunião não mandam lembrete.
  *
  * ─── Onde grava ─────────────────────────────────────────────────────────────
  *
  * Usa as credenciais de `scripts/lib/env-de-teste.ts` (ambiente, depois `.env.local`) e
- * RECUSA, sem opção de forçar, um Supabase que não esteja na própria máquina ou na rede
- * local (loopback ou IPv4 privado literal). Produção nunca é alvo.
+ * RECUSA, sem opção de forçar, um Supabase que não seja desta máquina, da rede local, ou o
+ * gateway interno do servidor (`supabase-envoy`, que só resolve de dentro da VPS). Da sua
+ * máquina, a produção nunca é alvo; na VPS quem roda é `make seeds-demo`, no próprio servidor.
  *
  * ─── Idempotência ───────────────────────────────────────────────────────────
  *
  * A organização é a unidade: se ela já existe, o script para e explica. `--recriar` apaga a
- * organização de demonstração (e só ela, pelo slug fixo) e semeia de novo. As contas da equipe
- * são reaproveitadas por e-mail.
+ * organização de demonstração (e só ela, pelo slug fixo) e semeia de novo — inclusive a chave
+ * de IA cadastrada nela, que precisa ser cadastrada de novo. As contas da equipe são
+ * reaproveitadas por e-mail.
  *
  * Acesso: todo administrador da plataforma entra como admin da organização; `--email=<conta>`
- * acrescenta uma conta existente.
+ * acrescenta uma conta existente. `--provedor=` e `--modelo=` escolhem o modelo da Lia
+ * (padrão anthropic / claude-sonnet-4-6), que precisa casar com a chave cadastrada.
  *
  * Run: make seeds-demo   (ou: pnpm exec tsx scripts/anima/seeds/demo-agencia.ts [--recriar] [--email=...])
  */
+
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
@@ -60,12 +67,20 @@ import {
 } from "./dados-agencia";
 
 const MARCA = "seed-demo-agencia";
+const MOTIVOS_DE_PASSAGEM = [
+  "Cliente pediu para falar com uma pessoa",
+  "Pedido de desconto fora da tabela",
+  "Dúvida técnica sobre integração",
+];
 const HORA = 3_600_000;
 const DIA = 24 * HORA;
 
 // ── Destino ──────────────────────────────────────────────────────────────────
 
-/** Loopback ou IPv4 privado (RFC 1918) LITERAL. Nome de DNS nunca passa: pode resolver para qualquer lugar. */
+/**
+ * Loopback, IPv4 privado (RFC 1918) LITERAL, ou o apelido interno do gateway do Supabase no
+ * servidor. Nenhum outro nome de DNS passa: pode resolver para qualquer lugar.
+ */
 export function destinoDaDemoEhLocal(url: string): boolean {
   let host: string;
   try {
@@ -74,6 +89,10 @@ export function destinoDaDemoEhLocal(url: string): boolean {
     return false;
   }
   if (host === "localhost" || host === "[::1]" || host === "host.docker.internal") return true;
+  // O gateway do Supabase na rede interna do servidor (apelido do kit,
+  // hostgator-setup-kit/supabase-single-server.override.yml). Só resolve de DENTRO dessa rede
+  // Docker: é por ele que o `make seeds-demo` da VPS escreve, e de fora ele não existe.
+  if (host === "supabase-envoy") return true;
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
   if (!m) return false;
   const [a, b] = [Number(m[1]), Number(m[2])];
@@ -452,17 +471,21 @@ async function semearConversas(
   gente: Pessoa[],
   equipe: Record<string, string>,
 ) {
+  // O canal da demo é o CHAT NO SITE, igual ao que `POST /api/v1/channels/webchat` cria: chave
+  // pública `wck_`, sem segredo de webhook, WORKING. Não há WhatsApp na demo — um número sem
+  // sessão no WAHA seria derrubado pela checagem de saúde do worker. A chave não é segredo
+  // (vai no código do site) e é por ela que o aquecimento e os visitantes conversam com a Lia.
+  const chave = `wck_${randomBytes(32).toString("base64url")}`;
   const sessao = await idDe(db, "channel_sessions", {
     organization_id: orgId,
-    waha_session_name: "demo-vertice-comercial",
-    display_name: "WhatsApp Comercial (demonstração)",
-    phone_number: "+5511900000000",
-    // Aparece CONECTADO, para a demo não abrir com a faixa de "desconectado". Não existe
-    // sessão no WAHA: com o worker no ar, a checagem de saúde pode derrubar o status, e
-    // nada sai de verdade por este número (as mensagens daqui são todas históricas).
-    status: "WORKING",
+    provider: "webchat",
+    webchat_public_key: chave,
+    webchat_allowed_origins: [],
     webhook_secret_encrypted: "\\x00",
-    // A conversa nova não cria negócio: os negócios já vêm do seed.
+    display_name: "Chat no site",
+    status: "WORKING",
+    metadata: {},
+    // A conversa nova não cria negócio sozinha: os negócios da demo vêm do seed.
     conversa_nova_cria_negocio: false,
   });
 
@@ -495,10 +518,14 @@ async function semearConversas(
     const clienteEsperando = aberta && ultima.quem === "cliente";
     // Metade de quem espera resposta fica SEM DONO: é o que a aba Fila (a que o Inbox abre)
     // mostra. O resto tem dono, e uma parte é de quem entra na demo (aba Minhas).
-    const naFila = clienteEsperando && n % 2 === 0;
+    const semDono = clienteEsperando && n % 2 === 0;
+    // Sem dono, com a Lia publicada no canal, a conversa é dela (aba Automático). Metade dessas
+    // é PASSAGEM: a IA chamou uma pessoa e se calou — é o que a aba Fila (a que o Inbox abre)
+    // mostra. A outra metade fica com a Lia.
+    const passada = semDono && n % 4 === 0;
     const status = !aberta
       ? "resolved"
-      : clienteEsperando && !naFila && n % 3 === 0
+      : clienteEsperando && !semDono && n % 3 === 0
         ? "pending"
         : "open";
     const ultimaDoCliente = [...roteiro].reverse().findIndex((f) => f.quem === "cliente");
@@ -506,14 +533,28 @@ async function semearConversas(
     const horaDoCliente =
       ultimaDoCliente >= 0 ? quando(horarios[roteiro.length - 1 - ultimaDoCliente]!) : null;
 
+    // Endereço da conversa no chat, como a ingestão grava (`lib/channels/webchat/ingest.ts`):
+    // visitante = conversa, contato pela identidade `webchat:<conexão>:<visitante>`.
+    const visitante = randomUUID();
+    const { error: erroIdentidade } = await db
+      .from("contacts")
+      .update({ social_identity: `webchat:${sessao}:${visitante}` } as never)
+      .eq("id", contatos[o.contato]!);
+    if (erroIdentidade) throw new Error(`identidade do visitante: ${erroIdentidade.message}`);
+
     const conversa = await idDe(db, "conversations", {
       organization_id: orgId,
       contact_id: contatos[o.contato],
       channel_session_id: sessao,
+      channel: "webchat",
+      provider_conversation_id: visitante,
       status,
-      assignee_kind: naFila ? null : "user",
-      assigned_to_user_id: naFila ? null : equipe[o.dono],
-      assigned_at: naFila ? null : quando(o.idadeDias * DIA),
+      assignee_kind: semDono ? null : "user",
+      assigned_to_user_id: semDono ? null : equipe[o.dono],
+      assigned_at: semDono ? null : quando(o.idadeDias * DIA),
+      bot_silenced_until: passada ? new Date(Date.now() + 30 * DIA).toISOString() : null,
+      last_handoff_at: passada ? horaDoCliente : null,
+      last_handoff_reason: passada ? r.um(MOTIVOS_DE_PASSAGEM) : null,
       awaiting_since: clienteEsperando ? horaDoCliente : null,
       last_message_at: quando(fim),
       last_message_preview: preencher(ultima.texto, p).slice(0, 120),
@@ -556,7 +597,7 @@ async function semearConversas(
     );
     mensagens += roteiro.length;
   }
-  return { sessao, conversas: escolhidos.length, mensagens };
+  return { sessao, chave, conversas: escolhidos.length, mensagens };
 }
 
 // ── Agenda e tarefas ─────────────────────────────────────────────────────────
@@ -678,31 +719,9 @@ async function semearIa(
   orgId: string,
   funis: Awaited<ReturnType<typeof semearFunis>>,
   equipe: Record<string, string>,
+  sessao: string,
+  modelo: { provider: string; model: string },
 ) {
-  for (const a of AGENTES) {
-    const agente = await idDe(db, "ai_agents", {
-      organization_id: orgId,
-      name: a.nome,
-      description: a.descricao,
-      kind: "mcp_agent",
-      model: "claude-sonnet-4-6",
-      system_prompt: a.prompt,
-      is_active: false,
-      is_default: false,
-    });
-    // Rascunho: nunca publicado, então nenhum canal o chama.
-    await idDe(db, "ai_agent_versions", {
-      organization_id: orgId,
-      agent_id: agente,
-      version_number: 1,
-      system_prompt: a.prompt,
-      provider: "anthropic",
-      model: "claude-sonnet-4-6",
-      status: "draft",
-      knowledge_source_ids: [],
-    });
-  }
-
   const fonte = await idDe(db, "ai_knowledge_sources", {
     organization_id: orgId,
     source_type: "faq",
@@ -724,6 +743,47 @@ async function semearIa(
       position: i,
     })),
   );
+
+  // A Lia (primeiro agente) nasce PUBLICADA no chat do site, com a FAQ e com casos ligados:
+  // é ela que atende os visitantes e o aquecimento. Os demais ficam em rascunho. Responder
+  // exige chave de IA na organização (IA › Credenciais) ou de plataforma no .env.
+  for (const [idx, a] of AGENTES.entries()) {
+    const noAr = idx === 0;
+    const agente = await idDe(db, "ai_agents", {
+      organization_id: orgId,
+      name: a.nome,
+      description: a.descricao,
+      kind: "mcp_agent",
+      model: modelo.model,
+      system_prompt: a.prompt,
+      is_active: noAr,
+      is_default: false,
+      priority: noAr ? 10 : 0,
+    });
+    const versao = await idDe(db, "ai_agent_versions", {
+      organization_id: orgId,
+      agent_id: agente,
+      version_number: 1,
+      system_prompt: a.prompt,
+      provider: modelo.provider,
+      model: modelo.model,
+      status: noAr ? "published" : "draft",
+      published_at: noAr ? new Date().toISOString() : null,
+      channel_session_id: noAr ? sessao : null,
+      cases_enabled: noAr,
+      knowledge_source_ids: [fonte],
+    });
+    if (noAr) {
+      const { error } = await db
+        .from("ai_agents")
+        .update({ published_version_id: versao } as never)
+        .eq("id", agente);
+      if (error) throw new Error(`publicar ${a.nome}: ${error.message}`);
+      await inserir(db, "ai_agent_version_channels", [
+        { organization_id: orgId, agent_version_id: versao, channel_session_id: sessao },
+      ]);
+    }
+  }
 
   const regras = regrasDeDemonstracao({
     pipelineId: funis.comercial!.id,
@@ -750,16 +810,27 @@ async function semearIa(
   return { agentes: AGENTES.length, perguntas: PERGUNTAS_FREQUENTES.length, regras: regras.length };
 }
 
-/** Os gatilhos das conversas pedem roteamento; a demo não tem a quem rotear. */
+/** Os gatilhos das conversas sem dono pedem roteamento; o histórico da demo não precisa dele. */
 async function encerrarEventosDoSeed(db: SupabaseClient, orgId: string): Promise<number> {
   const { data, error } = await db
     .from("event_log")
     .update({ status: "done", consumed_by: [MARCA] } as never)
     .eq("organization_id", orgId)
-    .in("status", ["pending", "processing"])
+    .eq("event_type", "conversation.routing_requested")
+    .eq("status", "pending")
     .select("id");
   if (error) throw new Error(`encerrar eventos do seed: ${error.message}`);
   return (data ?? []).length;
+}
+
+/** O chat no site é módulo da INSTALAÇÃO (`lib/channels/webchat/modulo.ts`); o seed só lê. */
+async function chatNoSiteLigadoNaInstalacao(db: SupabaseClient): Promise<boolean> {
+  const { data } = await db
+    .from("platform_config")
+    .select("valor")
+    .eq("chave", "MODULO_CANAL_WEBCHAT")
+    .maybeSingle();
+  return (data as { valor: string | null } | null)?.valor === "ligado";
 }
 
 // ── Principal ────────────────────────────────────────────────────────────────
@@ -767,19 +838,24 @@ async function encerrarEventosDoSeed(db: SupabaseClient, orgId: string): Promise
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const recriar = args.includes("--recriar");
-  const emailExtra = args.find((a) => a.startsWith("--email="))?.slice("--email=".length) ?? null;
+  const opcao = (nome: string): string | null =>
+    args.find((a) => a.startsWith(`--${nome}=`))?.slice(nome.length + 3) || null;
+  const emailExtra = opcao("email");
+  // O par provedor/modelo da Lia precisa casar com a chave cadastrada (IA › Credenciais).
+  const modelo = {
+    provider: opcao("provedor") ?? "anthropic",
+    model: opcao("modelo") ?? "claude-sonnet-4-6",
+  };
 
   const credenciais = credenciaisSupabaseDeTeste();
   if (!destinoDaDemoEhLocal(credenciais.url)) {
     console.error(
-      `[${MARCA}] recusado: ${new URL(credenciais.url).host} não é desta máquina nem da rede local. ` +
-        "A demonstração só é semeada em Supabase local (loopback ou IP privado).",
+      `[${MARCA}] recusado: ${new URL(credenciais.url).host} não é desta máquina, da rede local ` +
+        "nem a rede interna do servidor. Na VPS, rode `make seeds-demo` no próprio servidor.",
     );
     process.exit(2);
   }
-  console.info(
-    `[${MARCA}] escrevendo em LOCAL: ${credenciais.url} (origem: ${credenciais.origem})`,
-  );
+  console.info(`[${MARCA}] escrevendo em ${credenciais.url} (origem: ${credenciais.origem})`);
 
   const db = createClient(credenciais.url, credenciais.serviceRole, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -814,18 +890,26 @@ async function main(): Promise<void> {
   const conversas = await semearConversas(db, orgId, plano, leadIds, contatos, gente, equipe);
   const reunioes = await semearAgenda(db, orgId, plano, contatos, gente, equipe);
   const tarefas = await semearTarefas(db, orgId, plano, leadIds, contatos, equipe);
-  const ia = await semearIa(db, orgId, funis, equipe);
+  const ia = await semearIa(db, orgId, funis, equipe, conversas.sessao, modelo);
   const eventos = await encerrarEventosDoSeed(db, orgId);
+  const chatLigado = await chatNoSiteLigadoNaInstalacao(db);
+  const link = `${credenciais.appUrl.replace(/\/+$/, "")}/chat/${conversas.chave}`;
 
   console.info(
     [
       `\n✅ ${ORGANIZACAO.nome}`,
       `   equipe: ${EQUIPE.length} pessoas · acesso de admin para ${acesso.length} conta(s) da plataforma`,
       `   CRM: ${contatos.length} contatos · ${leadIds.length} oportunidades em ${FUNIS.length} funis · ${atividades} notas`,
-      `   Inbox: ${conversas.conversas} conversas · ${conversas.mensagens} mensagens (número aparece conectado; nada sai)`,
+      `   Inbox: ${conversas.conversas} conversas · ${conversas.mensagens} mensagens, no chat do site`,
       `   Agenda: ${reunioes} reuniões · ${tarefas} tarefas`,
-      `   IA: ${ia.agentes} agentes em rascunho · ${ia.perguntas} perguntas frequentes · ${ia.regras} regras e 1 follow-up DESLIGADOS`,
+      `   IA: Lia publicada no chat do site (${modelo.provider}/${modelo.model}) · ${ia.perguntas} perguntas frequentes · ${ia.regras} regras e 1 follow-up DESLIGADOS`,
       `   eventos de roteamento encerrados: ${eventos}`,
+      `   Chat do site: ${link}`,
+      chatLigado
+        ? "   Módulo do chat no site: ligado."
+        : "   ⚠ Módulo do chat no site DESLIGADO na instalação: ligue em /admin/sistema, senão o link responde 404.",
+      "   Para a Lia responder: chave de IA em IA › Credenciais (e teto em IA › Uso de IA).",
+      "   Para a FAQ valer: chave de embedding e “Preparar tudo de novo” em IA › Conhecimento.",
       `   Troque de organização no app para "${ORGANIZACAO.nome}".`,
     ].join("\n"),
   );

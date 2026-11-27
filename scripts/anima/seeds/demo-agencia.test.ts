@@ -20,6 +20,8 @@ describe("destino do seed de demonstração", () => {
     "http://10.0.0.5:8000",
     "http://172.20.0.3:8000",
     "http://host.docker.internal:54321",
+    // O gateway interno do servidor: só resolve de dentro da rede Docker do Supabase.
+    "http://supabase-envoy:8000",
   ])("aceita %s", (url) => {
     expect(destinoDaDemoEhLocal(url)).toBe(true);
   });
@@ -30,6 +32,7 @@ describe("destino do seed de demonstração", () => {
     "http://172.32.0.1:8000",
     "http://8.8.8.8",
     "http://127.0.0.1.nip.io",
+    "http://supabase-envoy.example.com:8000",
     "http://192.168.0.300",
     "não é url",
   ])("recusa %s", (url) => {

@@ -406,6 +406,40 @@ cmd_brand_emails() {
   fi
 }
 
+# ── Demonstração ─────────────────────────────────────────────────────────────
+
+# Semeia a organização de demonstração (scripts/anima/seeds/demo-agencia.ts) NO SERVIDOR.
+# O servidor não tem Node nem node_modules, e a imagem do app não leva scripts/anima
+# (.dockerignore): roda num contêiner node descartável, na rede interna do Supabase, que
+# instala só o cliente do Supabase e o tsx nas versões do package.json. O seed só aceita o
+# gateway interno (`supabase-envoy`), que não existe fora desta rede.
+cmd_seeds_demo() {
+  entrar
+  [ "${SINGLE_SERVER:-0}" = "1" ] || die "A demo no servidor pede o Supabase no próprio servidor (SINGLE_SERVER=1)."
+  [ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ] || die "SUPABASE_SERVICE_ROLE_KEY vazio no .env."
+  [ -n "${SINGLE_SERVER_NETWORK:-}" ] || die "SINGLE_SERVER_NETWORK vazio no .env."
+  local args=()
+  [ "${RECRIAR:-0}" = "1" ] && args+=(--recriar)
+  [ -n "${EMAIL:-}" ] && args+=("--email=$EMAIL")
+  [ -n "${IA_PROVEDOR:-}" ] && args+=("--provedor=$IA_PROVEDOR")
+  [ -n "${IA_MODELO:-}" ] && args+=("--modelo=$IA_MODELO")
+  step "Semeando a organização de demonstração em https://$DOMAIN"
+  # A chave vai por variável herdada (-e NOME, sem valor): não aparece na linha de comando.
+  NEXT_PUBLIC_SUPABASE_URL="http://supabase-envoy:8000" \
+  NEXT_PUBLIC_APP_URL="https://$DOMAIN" \
+  docker run --rm --network "$SINGLE_SERVER_NETWORK" \
+    -e NEXT_PUBLIC_SUPABASE_URL -e NEXT_PUBLIC_APP_URL -e SUPABASE_SERVICE_ROLE_KEY \
+    -v "$RAIZ/scripts:/src/scripts:ro" -v "$RAIZ/package.json:/src/package.json:ro" \
+    node:22-alpine sh -euc '
+      mkdir -p /w && cp -r /src/scripts /w/ && cd /w
+      supa="$(node -p "require(\"/src/package.json\").dependencies[\"@supabase/supabase-js\"]")"
+      tsx="$(node -p "require(\"/src/package.json\").devDependencies.tsx")"
+      echo "{\"private\":true}" > package.json
+      npm install --no-audit --no-fund --loglevel=error "@supabase/supabase-js@$supa" "tsx@$tsx" >/dev/null
+      exec node_modules/.bin/tsx scripts/anima/seeds/demo-agencia.ts "$@"
+    ' seed "${args[@]}"
+}
+
 # ── Despacho ─────────────────────────────────────────────────────────────────
 
 main() {
@@ -429,6 +463,7 @@ main() {
     deploy|update) cmd_deploy ;;
     rollback) cmd_rollback ;;
     brand-emails) cmd_brand_emails ;;
+    seeds-demo) cmd_seeds_demo ;;
     *) echo "uso: $0 <comando> (veja: make help)" >&2; exit 2 ;;
   esac
 }

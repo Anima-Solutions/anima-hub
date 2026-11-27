@@ -75,26 +75,28 @@ Para o stack local completo (Supabase local, app, worker, scheduler, WAHA e Redi
 
 ### 3.1 Dados de demonstração
 
-Com o Supabase local no ar, `make seeds-demo` cria a organização **Vértice Digital
-(demonstração)**, uma agência de marketing e tecnologia fictícia, com volume para demo e QA visual:
+`make seeds-demo` cria a organização **Vértice Digital (demonstração)**, uma agência de marketing
+e tecnologia fictícia. É feita para **demo comercial**: cada tela abre preenchida.
 
 | Área | O que nasce |
 |---|---|
-| Equipe | 5 pessoas (gestora, 3 vendedores, 1 leitora). Todo administrador da plataforma entra como admin |
+| Equipe | 5 pessoas (gestora, 3 vendedores, 1 leitora). Todo administrador da plataforma entra como admin, e a primeira conta recebe parte da carteira, para as abas "Minhas" não abrirem vazias |
 | CRM | 120 contatos, ~115 oportunidades nos funis "Comercial" e "Renovação e upsell", com notas na linha do tempo, valores pontuais e mensais, ganhos e perdidos com motivo |
-| Inbox | 45 conversas de WhatsApp (~190 mensagens): 8 sem dono na aba Fila, algumas na aba Minhas de quem entra, o resto com a equipe, pendentes e resolvidas |
-| Agenda | 4 tipos de reunião, jornada seg–sex da equipe e ~50 reuniões passadas e futuras (realizadas, faltas, canceladas, confirmadas), mais 60 tarefas, algumas vencidas |
-| IA | 2 agentes em rascunho, base de perguntas frequentes, 3 regras de automação e 1 follow-up |
+| Inbox | 45 conversas no **chat do site** (~185 mensagens): passadas para uma pessoa (aba Fila), com a Lia (Automático), com a equipe, pendentes e resolvidas |
+| Agenda | 4 tipos de reunião, jornada seg–sex da equipe, ~50 reuniões passadas e futuras e 60 tarefas, algumas vencidas |
+| IA | A **Lia** publicada no chat do site, com a base de perguntas frequentes e casos ligados; o "Sol" em rascunho; 3 regras de automação e 1 follow-up desligados |
 
-É feito para **demonstração**, não para desenvolvimento: a primeira conta com acesso recebe uma
-parte da carteira (oportunidades, conversas, tarefas e reuniões), para as abas "Minhas" não abrirem
-vazias.
+**Não há WhatsApp na demo.** O canal é o chat do site, que é real: a Lia atende quem abrir o link
+impresso no fim do comando. O histórico entra como importado e não acorda nenhum agente nem
+automação. Para a Lia responder de verdade:
 
-**Nada age sozinho.** O número de WhatsApp aparece conectado, mas não existe sessão no WAHA, então
-nada sai por ele. Com o worker no ar, a checagem de saúde pode marcá-lo como desconectado; rodar de
-novo com `RECRIAR=1` volta ao estado da demo. Os agentes, as regras e o follow-up nascem
-desligados, e os tipos de reunião não mandam lembrete. As mensagens entram como histórico
-importado, então nenhum agente nem automação responde a elas.
+1. Ligue o módulo **Chat no site** em `/admin/sistema` (uma vez, para a instalação). Sem ele o
+   link do chat responde 404.
+2. Na organização da demo, cadastre a chave de IA em **IA › Credenciais** e defina o teto mensal em
+   **IA › Uso de IA**. O par provedor/modelo da Lia precisa casar com a chave
+   (`IA_PROVEDOR=`/`IA_MODELO=`; padrão `anthropic`/`claude-sonnet-4-6`).
+3. Para a FAQ valer, uma chave de embedding (OpenAI, OpenRouter ou Google) e **Preparar tudo de
+   novo** em IA › Conhecimento.
 
 ```bash
 make seeds-demo                     # cria; se já existe, para e avisa
@@ -103,10 +105,13 @@ make seeds-demo EMAIL=voce@...      # dá acesso de admin a mais uma conta exist
 make seeds-check                    # typecheck e testes dos seeds (o pnpm typecheck exclui scripts/)
 ```
 
-O script recusa, sem opção de forçar, um Supabase que não seja desta máquina ou da rede local
-(loopback ou IP privado). Produção nunca é alvo. Depois de rodar, troque de organização no app.
-Os dados são fixos: rodar de novo com `RECRIAR=1` gera as mesmas pessoas e os mesmos negócios. Os
-arquivos ficam em `scripts/anima/seeds/`, e um PR que só mexe neles pula o e2e e o build da imagem.
+`RECRIAR=1` apaga tudo da organização de demonstração, **inclusive a chave de IA** cadastrada nela.
+
+**Onde roda.** Na sua máquina, contra o Supabase local (loopback ou IP privado). **No servidor**,
+o mesmo `make seeds-demo` roda num contêiner `node:22-alpine` descartável, na rede interna do
+Supabase (o servidor não tem Node e a imagem do app não leva `scripts/anima/`). O script recusa,
+sem opção de forçar, qualquer outro destino: da sua máquina, a produção nunca é alvo. Os dados são
+fixos, e um PR que só mexe em `scripts/anima/seeds/` pula o e2e e o build da imagem.
 
 O `.npmrc` do projeto tem somente:
 
@@ -459,7 +464,7 @@ os scripts do `pnpm` (desenvolvimento). Os alvos destrutivos pedem confirmação
 | `make dev` | WAHA local (`docker compose up -d`) e `pnpm dev` |
 | `make check` | `pnpm typecheck`, `pnpm lint`, `pnpm test:unit` |
 | `make e2e` | `pnpm test:e2e` |
-| `make seeds-demo` | Agência de demonstração no Supabase local (`RECRIAR=1`, `EMAIL=`; seção 3.1) |
+| `make seeds-demo` | Organização de demonstração, local ou no servidor (`RECRIAR=1`, `EMAIL=`, `IA_PROVEDOR=`, `IA_MODELO=`; seção 3.1) |
 | `make seeds-check` | Typecheck e testes dos seeds de demonstração |
 | `make ds-update` | Atualiza o DS, roda o gerador de tokens e `check` (major pede `ALLOW_MAJOR=1`) |
 | `make setup` | Pastas `/srv`, volumes ligados a elas, rede do NPM, `.env` e arquivo do token |

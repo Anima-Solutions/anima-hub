@@ -65,8 +65,12 @@ seeds-check: ## Typecheck e testes dos seeds de demonstração (o pnpm typecheck
 	pnpm exec tsc -p scripts/anima/seeds/tsconfig.json
 	pnpm exec vitest run scripts/anima/seeds
 
-seeds-demo: ## Semeia a agência de demonstração no Supabase LOCAL (RECRIAR=1 refaz; EMAIL= dá acesso)
-	pnpm exec tsx scripts/anima/seeds/demo-agencia.ts $(if $(RECRIAR),--recriar) $(if $(EMAIL),--email=$(EMAIL))
+seeds-demo: ## Organização de demonstração (local ou no servidor; RECRIAR=1, EMAIL=, IA_PROVEDOR=, IA_MODELO=)
+	@if [ -f .env ] && grep -q '^SINGLE_SERVER=1' .env; then \
+	  RECRIAR="$(RECRIAR)" EMAIL="$(EMAIL)" IA_PROVEDOR="$(IA_PROVEDOR)" IA_MODELO="$(IA_MODELO)" bash scripts/anima/servidor.sh seeds-demo; \
+	else \
+	  pnpm exec tsx scripts/anima/seeds/demo-agencia.ts $(if $(RECRIAR),--recriar) $(if $(EMAIL),--email=$(EMAIL)) $(if $(IA_PROVEDOR),--provedor=$(IA_PROVEDOR)) $(if $(IA_MODELO),--modelo=$(IA_MODELO)); \
+	fi
 
 ds-update: ## Atualiza o design system para a última versão e roda check
 	@atual="$$(node -p "require('./package.json').dependencies['@anima-solutions/design-system']")"; \

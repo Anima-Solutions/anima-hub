@@ -474,7 +474,7 @@ export const TIPOS_DE_REUNIAO: ReadonlyArray<{
 export const AGENTES: ReadonlyArray<{ nome: string; descricao: string; prompt: string }> = [
   {
     nome: "Lia — pré-vendas",
-    descricao: "Atende quem chega pelo WhatsApp, qualifica e agenda o diagnóstico.",
+    descricao: "Atende quem chega pelo chat do site, qualifica e agenda o diagnóstico.",
     prompt:
       "Você é a Lia, da Vértice Digital, uma agência de marketing e tecnologia. Atenda com " +
       "simpatia e objetividade. Descubra o segmento da empresa, o principal desafio e o " +
